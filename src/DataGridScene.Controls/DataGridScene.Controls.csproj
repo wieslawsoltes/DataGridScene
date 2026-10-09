@@ -1,0 +1,14 @@
+<Project Sdk="Uno.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
+    <OutputType>Library</OutputType>
+    <UnoFeatures>Skia;SkiaRenderer</UnoFeatures>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DataGridScene.Core/DataGridScene.Core.csproj" />
+    <ProjectReference Include="../DataGridScene.Layout/DataGridScene.Layout.csproj" />
+    <ProjectReference Include="../DataGridScene.Rendering.Skia/DataGridScene.Rendering.Skia.csproj" />
+    <ProjectReference Include="../DataGridScene.Export/DataGridScene.Export.csproj" />
+  </ItemGroup>
+</Project>

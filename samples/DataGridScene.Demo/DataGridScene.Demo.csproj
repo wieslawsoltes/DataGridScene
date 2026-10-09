@@ -1,0 +1,25 @@
+<Project Sdk="Uno.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <UnoFeatures>Skia;SkiaRenderer</UnoFeatures>
+    <ApplicationTitle>DataGridScene</ApplicationTitle>
+    <ApplicationId>org.datagridscene.demo</ApplicationId>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <WasmEnableThreads>false</WasmEnableThreads>
+    <WasmShellWebAppBasePath Condition="'$(WasmShellWebAppBasePath)' == ''">/DataGridScene/</WasmShellWebAppBasePath>
+    <WasmShellEnableLogProfiler>false</WasmShellEnableLogProfiler>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/DataGridScene.Controls/DataGridScene.Controls.csproj" />
+    <ProjectReference Include="../../tests/DataGridScene.Validation/DataGridScene.Validation.csproj" />
+    <TrimmerRootAssembly Include="DataGridScene.Core" />
+    <TrimmerRootAssembly Include="DataGridScene.Layout" />
+    <TrimmerRootAssembly Include="DataGridScene.Validation" />
+    <TrimmerRootAssembly Include="DataGridScene.Demo" />
+  </ItemGroup>
+</Project>
