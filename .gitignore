@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+artifacts/
+node_modules/
+TestResults/
+playwright-report/
+*.user
+.DS_Store
