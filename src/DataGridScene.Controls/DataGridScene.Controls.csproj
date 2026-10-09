@@ -1,6 +1,7 @@
 <Project Sdk="Uno.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
+    <TargetFrameworks Condition="'$(DataGridSceneTarget)' != ''">$(DataGridSceneTarget)</TargetFrameworks>
     <OutputType>Library</OutputType>
     <UnoFeatures>Skia;SkiaRenderer</UnoFeatures>
     <IsPackable>true</IsPackable>
