@@ -30,29 +30,24 @@ public sealed class GridColumn
     public GridColumn(string field, Type dataType, string? caption = null)
     {
         if (string.IsNullOrWhiteSpace(field)) throw new ArgumentException("A field name is required.", nameof(field));
-        Field = field;
-        Caption = caption ?? field;
-        DataType = Nullable.GetUnderlyingType(dataType) ?? dataType;
+        ArgumentNullException.ThrowIfNull(dataType);
+        Field = field; Caption = caption ?? field; DataType = Nullable.GetUnderlyingType(dataType) ?? dataType;
         Alignment = GridValue.IsNumericType(DataType) ? ColumnAlignment.Right : ColumnAlignment.Left;
         if (DataType == typeof(bool)) Presentation = ColumnPresentation.CheckBox;
     }
-
     public object? GetValue(GridRecord record) => ValueGetter is null ? record[Index] : ValueGetter(record);
-
     public string Display(object? value, CultureInfo? culture = null)
     {
         if (value is null) return string.Empty;
         culture ??= CultureInfo.InvariantCulture;
         return value is IFormattable formatted ? formatted.ToString(Format, culture) ?? string.Empty : value.ToString() ?? string.Empty;
     }
-
     public bool TryConvert(object? input, CultureInfo culture, out object? value, out string? error)
     {
-        value = null;
-        error = null;
-        input = GridValue.Unwrap(input);
+        value = null; error = null;
         try
         {
+            input = GridValue.Unwrap(input);
             if (input is null || (input is string blank && string.IsNullOrWhiteSpace(blank) && DataType != typeof(string)))
             {
                 if (!AllowNull) throw new FormatException($"{Caption} is required.");
@@ -64,8 +59,8 @@ public sealed class GridColumn
             else if (DataType == typeof(Guid)) value = Guid.Parse(Convert.ToString(input, culture)!);
             else if (DataType == typeof(bool))
             {
-                string text = Convert.ToString(input, culture)!.Trim();
-                value = text == "1" ? true : text == "0" ? false : bool.Parse(text);
+                string booleanText = Convert.ToString(input, culture)!.Trim();
+                value = booleanText == "1" ? true : booleanText == "0" ? false : bool.Parse(booleanText);
             }
             else if (DataType.IsEnum) value = Enum.Parse(DataType, Convert.ToString(input, culture)!, true);
             else
@@ -77,16 +72,11 @@ public sealed class GridColumn
                 }
                 value = Convert.ChangeType(input, DataType, culture);
             }
-            if (!AllowNull && (value is null || value is string text && string.IsNullOrWhiteSpace(text)))
-                throw new FormatException($"{Caption} is required.");
-            error = Validator?.Invoke(value);
-            return error is null;
+            if (!AllowNull && (value is null || value is string requiredText && string.IsNullOrWhiteSpace(requiredText))) throw new FormatException($"{Caption} is required.");
+            error = Validator?.Invoke(value); return error is null;
         }
         catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or ArgumentException)
-        {
-            error = ex.Message;
-            return false;
-        }
+        { error = ex.Message; return false; }
     }
 }
 
@@ -96,31 +86,26 @@ public sealed class GridSchema
     public ReadOnlyCollection<GridColumn> Columns { get; }
     public CultureInfo Culture { get; }
     public Func<IReadOnlyList<object?>, string?>? RowValidator { get; init; }
-
     public GridSchema(IEnumerable<GridColumn> columns, CultureInfo? culture = null)
     {
         var materialized = columns.ToArray();
         if (materialized.Length == 0) throw new ArgumentException("At least one column is required.", nameof(columns));
         _fields = new(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < materialized.Length; i++)
+        foreach (var column in materialized)
         {
-            var column = materialized[i];
             if (column.Index != -1) throw new ArgumentException("A column instance cannot belong to more than one schema.");
+            if (!double.IsFinite(column.Width) || column.Width <= 0) throw new ArgumentException("Column widths must be finite and positive.");
             if (!_fields.TryAdd(column.Field, column)) throw new ArgumentException($"Duplicate field: {column.Field}");
         }
         for (int i = 0; i < materialized.Length; i++) materialized[i].Index = i;
-        Columns = Array.AsReadOnly(materialized);
-        Culture = culture ?? CultureInfo.InvariantCulture;
+        Columns = Array.AsReadOnly(materialized); Culture = culture ?? CultureInfo.InvariantCulture;
     }
-
     public GridColumn this[string field] => _fields.TryGetValue(field, out var column) ? column : throw new ArgumentException($"Unknown field: {field}", nameof(field));
     public bool TryGetColumn(string field, out GridColumn column) => _fields.TryGetValue(field, out column!);
-
     internal object?[] Normalize(IReadOnlyList<object?> values)
     {
         if (values.Count != Columns.Count) throw new ArgumentException($"Expected {Columns.Count} values, received {values.Count}.");
-        var output = new object?[values.Count];
-        var errors = new List<GridValidationError>();
+        var output = new object?[values.Count]; var errors = new List<GridValidationError>();
         for (int i = 0; i < values.Count; i++)
         {
             if (Columns[i].ValueGetter is not null) { output[i] = values[i]; continue; }
@@ -133,22 +118,18 @@ public sealed class GridSchema
     }
 }
 
-/// <summary>Comparison rules are shared by filters, ordering, grouping and summaries.</summary>
+/// <summary>Comparison rules shared by filters, ordering, grouping and summaries.</summary>
 public static class GridValue
 {
     public static bool IsIntegralType(Type type) => Type.GetTypeCode(type) is TypeCode.Byte or TypeCode.SByte or TypeCode.Int16 or TypeCode.UInt16 or TypeCode.Int32 or TypeCode.UInt32 or TypeCode.Int64 or TypeCode.UInt64;
     public static bool IsNumericType(Type type) => IsIntegralType(type) || Type.GetTypeCode(type) is TypeCode.Single or TypeCode.Double or TypeCode.Decimal;
-
     public static object? Unwrap(object? value) => value is not JsonElement json ? value : json.ValueKind switch
     {
-        JsonValueKind.Null or JsonValueKind.Undefined => null,
-        JsonValueKind.String => json.GetString(),
+        JsonValueKind.Null or JsonValueKind.Undefined => null, JsonValueKind.String => json.GetString(),
         JsonValueKind.Number => json.TryGetDecimal(out var number) ? number : json.GetDouble(),
-        JsonValueKind.True => true,
-        JsonValueKind.False => false,
+        JsonValueKind.True => true, JsonValueKind.False => false,
         _ => throw new FormatException("A scalar value is required.")
     };
-
     public static int Compare(object? a, object? b)
     {
         a = Unwrap(a); b = Unwrap(b);
@@ -164,7 +145,6 @@ public static class GridValue
         if (a.GetType() == b.GetType() && a is IComparable comparable) return comparable.CompareTo(b);
         return StringComparer.OrdinalIgnoreCase.Compare(Convert.ToString(a, CultureInfo.InvariantCulture), Convert.ToString(b, CultureInfo.InvariantCulture));
     }
-
     public static string Key(object? value)
     {
         value = Unwrap(value);

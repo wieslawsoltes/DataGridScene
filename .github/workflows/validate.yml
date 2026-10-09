@@ -17,5 +17,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Build core
-        run: dotnet build src/DataGridScene.Core -c Release
+      - name: Core, data, layout and export conformance
+        run: dotnet run --project tests/DataGridScene.Tests -c Release
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-validation
+          path: artifacts/
