@@ -1,0 +1,47 @@
+name: Offline validation kit
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/offline-validation-kit.yml'
+permissions:
+  contents: read
+jobs:
+  kit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build desktop and managed validation dependencies
+        run: |
+          dotnet build samples/DataGridScene.Demo -c Release -f net10.0-desktop -p:DataGridSceneTarget=net10.0-desktop
+          dotnet build tests/DataGridScene.Tests -c Release
+      - name: Assemble redistributable offline compiler kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(dirname "$(readlink -f "$(command -v dotnet)")")"
+          sdk="$(dotnet --version)"
+          runtime="$(find "$root/shared/Microsoft.NETCore.App" -mindepth 1 -maxdepth 1 -type d -name '10.*' -printf '%f\n' | sort -V | tail -1)"
+          refs="$(find "$root/packs/Microsoft.NETCore.App.Ref" -mindepth 1 -maxdepth 1 -type d -name '10.*' -printf '%f\n' | sort -V | tail -1)"
+          mkdir -p kit/host/fxr kit/shared/Microsoft.NETCore.App kit/compiler kit/refs kit/deps
+          cp "$root/dotnet" kit/
+          cp -r "$root/host/fxr/$runtime" kit/host/fxr/
+          cp -r "$root/shared/Microsoft.NETCore.App/$runtime" kit/shared/Microsoft.NETCore.App/
+          cp -r "$root/sdk/$sdk/Roslyn/bincore/." kit/compiler/
+          cp -r "$root/packs/Microsoft.NETCore.App.Ref/$refs/ref/net10.0/." kit/refs/
+          cp "$root/LICENSE.txt" "$root/ThirdPartyNotices.txt" kit/
+          find samples/DataGridScene.Demo/bin/Release/net10.0-desktop -type f \( -name '*.dll' -o -name 'libSkiaSharp.so' -o -name 'libHarfBuzzSharp.so' \) -exec cp -n '{}' kit/deps/ \;
+          printf '%s\n' "commit=$GITHUB_SHA" "sdk=$sdk" "runtime=$runtime" > kit/provenance.txt
+          tar -czf offline-validation-kit.tar.gz kit
+          sha256sum offline-validation-kit.tar.gz > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-validation-kit
+          path: |
+            offline-validation-kit.tar.gz
+            SHA256SUMS.txt
+          retention-days: 7
