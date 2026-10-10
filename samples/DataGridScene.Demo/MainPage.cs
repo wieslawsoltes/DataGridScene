@@ -134,7 +134,7 @@ public sealed partial class MainPage : Page
     {
         var navigation = new StackPanel { Spacing = 4, Padding = new Thickness(10, 18, 10, 12) };
         navigation.Children.Add(new TextBlock { Text = "DATA GRID", Margin = new Thickness(12, 0, 0, 14), FontSize = 11, CharacterSpacing = 80, Foreground = Brush("#777777"), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        foreach (var (name, glyph) in new[] { ("Overview", "▦"), ("Grouping", "▤"), ("Filtering", "⌕"), ("Editing", "✎"), ("Cell selection", "▧"), ("Conditional formatting", "◐"), ("Master-detail", "⊞"), ("Column bands", "▥"), ("Performance", "↗") })
+        foreach (var (name, glyph) in new[] { ("Overview", "▦"), ("Grouping", "▤"), ("Filtering", "⌕"), ("Editing", "✎"), ("Cell selection", "▧"), ("Conditional formatting", "◐"), ("Master-detail", "⊞"), ("Column bands", "▥"), ("Nested bands", "▥"), ("Performance", "↗") })
         {
             var button = Button("scenario-" + name, glyph + "   " + name, () => ApplyScenario(name), false);
             button.HorizontalAlignment = HorizontalAlignment.Stretch; button.HorizontalContentAlignment = HorizontalAlignment.Left;
@@ -172,19 +172,22 @@ public sealed partial class MainPage : Page
         {
             var check = new CheckBox { Content = name, IsChecked = initial, FontSize = 12, MinHeight = 29 };
             check.Click += (_, _) => Run(() => action(check.IsChecked == true)); panel.Children.Add(check);
+            _optionChecks[name] = check; _actions["option-" + name] = check;
         }
         Toggle("Group panel", true, value => DataGrid.ShowGroupPanel = value);
         Toggle("Auto-filter row", true, value => DataGrid.ShowFilterRow = value);
         Toggle("Column bands", false, value => DataGrid.ShowBands = value);
         Toggle("Read-only", false, value => DataGrid.IsReadOnly = value);
         var selectionMode = new ComboBox { ItemsSource = Enum.GetValues<GridSelectionMode>(), SelectedItem = GridSelectionMode.MultipleRows, HorizontalAlignment = HorizontalAlignment.Stretch };
-        selectionMode.SelectionChanged += (_, _) => { if (selectionMode.SelectedItem is GridSelectionMode mode) DataGrid.SelectionMode = mode; };
+        selectionMode.SelectionChanged += (_, _) => { if (!_syncingOptions && selectionMode.SelectedItem is GridSelectionMode mode) DataGrid.SelectionMode = mode; };
         panel.Children.Add(new TextBlock { Text = "Selection mode", FontSize = 12 }); panel.Children.Add(selectionMode);
+        _selectionOptions = selectionMode; _actions["selection-mode"] = selectionMode;
         Toggle("Compact rows", true, value => DataGrid.RowHeight = value ? 28 : 36);
         Toggle("Dark grid", false, value => { DataGrid.DarkTheme = value; });
         panel.Children.Add(new TextBlock { Text = "DATASET SIZE", FontSize = 10, CharacterSpacing = 70, Margin = new Thickness(0, 16, 0, 3), Foreground = Brush("#777777") });
         var size = new ComboBox { ItemsSource = new[] { "1,000 records", "10,000 records", "100,000 records" }, SelectedIndex = 1, HorizontalAlignment = HorizontalAlignment.Stretch };
-        size.SelectionChanged += (_, _) => { if (!_loading) Run(() => Reload(size.SelectedIndex == 0 ? 1000 : size.SelectedIndex == 1 ? 10000 : 100000)); }; panel.Children.Add(size);
+        size.SelectionChanged += (_, _) => { if (!_loading && !_syncingOptions && size.SelectedIndex >= 0) Run(() => Reload(size.SelectedIndex == 0 ? 1000 : size.SelectedIndex == 1 ? 10000 : 100000)); }; panel.Children.Add(size);
+        _sizeOptions = size; _actions["dataset-size"] = size;
         panel.Children.Add(Button("save-layout", "Save layout", SaveLayout)); panel.Children.Add(Button("restore-layout", "Restore layout", RestoreLayout));
         panel.Children.Add(new Border { Height = 1, Background = Brush("#dedede"), Margin = new Thickness(0, 12, 0, 8) });
         panel.Children.Add(new TextBlock { Text = "RENDERING", FontSize = 10, CharacterSpacing = 70, Foreground = Brush("#777777") }); panel.Children.Add(_metrics);
@@ -195,6 +198,7 @@ public sealed partial class MainPage : Page
     public void Reload(int count)
     {
         if (!DataGrid.CommitEdit()) return;
+        _searchTimer.Stop();
         _loading = true; Ready = false;
         try
         {
@@ -210,16 +214,28 @@ public sealed partial class MainPage : Page
     public void ApplyScenario(string name)
     {
         if (!DataGrid.CommitEdit()) return;
+        _searchTimer.Stop();
         Scenario = name; Message = null;
         _loading = true; _search.Text = ""; _loading = false;
         if (name == "Performance") { Reload(100000); Scenario = name; }
-        DataGrid.ShowBands = name == "Column bands";
+        DataGrid.ShowBands = name is "Column bands" or "Nested bands";
         DataGrid.IsReadOnly = false;
         DataGrid.SelectionMode = name == "Cell selection" ? GridSelectionMode.Cells : GridSelectionMode.MultipleRows;
         var query = DefaultQuery();
         if (name == "Grouping") query = query with { Groups = [new("Region"), new("Status")] };
         if (name == "Filtering") query = query with { Filter = GridFilter.And(new FieldFilter("Total", FilterOperator.GreaterOrEqual, 5000m), new FieldFilter("Status", FilterOperator.NotEqual, "Cancelled")), Sorts = [new("Total", SortDirection.Descending)] };
         DataGrid.SetQuery(query);
+        if (name == "Nested bands")
+        {
+            foreach (var column in DataGrid.Table!.Schema.Columns)
+            {
+                string section = column.Field is "Company" or "Salesperson" ? "Contact" : "Location";
+                if (column.Band == "Customer") DataGrid.ColumnLayout!.SetBandPath(column.Field, "Customer", section);
+                else DataGrid.ColumnLayout!.SetBandPath(column.Field, column.Band ?? "General");
+            }
+        }
+        else foreach (var column in DataGrid.Table!.Schema.Columns)
+            DataGrid.ColumnLayout!.SetBandPath(column.Field, column.Band ?? "General");
         if (name == "Master-detail") foreach (var row in DataGrid.View!.FilteredRecords.Take(2)) if (!DataGrid.View.IsDetailExpanded(row.Id)) DataGrid.View.ToggleDetail(row.Id);
         if (name == "Conditional formatting") { DataGrid.EnsureVisible(new(DataGrid.View!.FilteredRecords[0].Id, "Total")); }
         foreach (var (key, element) in _actions) if (key.StartsWith("scenario-") && element is Button button) button.Background = key == "scenario-" + name ? Brush("#e4eef7") : Brush("#f7f7f7");
@@ -228,8 +244,8 @@ public sealed partial class MainPage : Page
     private void AddRecord()
     {
         if (!DataGrid.CommitEdit() || DataGrid.IsReadOnly) return;
-        int index = checked((int)(DataGrid.Table!.Records.Max(record => record.Id) - 10001 + 1));
-        var row = OrderData.CreateRecord(index); DataGrid.Table.Add(row); DataGrid.ClearFilters();
+        int index = checked((int)(DataGrid.Table!.Records.Select(record => record.Id).DefaultIfEmpty(10000).Max() - 10001 + 1));
+        var row = OrderData.CreateRecord(index); DataGrid.Table.Add(row); ClearFilters();
         var cell = new CellAddress(row.Id, "Company"); DataGrid.Selection.Select(DataGrid.View!, cell); DataGrid.EnsureVisible(cell); DataGrid.BeginEdit(row.Id, "Company");
     }
     private async void DeleteSelected()
@@ -243,14 +259,14 @@ public sealed partial class MainPage : Page
         }
         catch (Exception error) { SetMessage(error.Message); }
     }
-    public void ClearFilters() { DataGrid.ClearFilters(); _loading = true; _search.Text = ""; _loading = false; Message = null; RefreshStatus(); }
+    public void ClearFilters() { _searchTimer.Stop(); DataGrid.ClearFilters(); _loading = true; _search.Text = ""; _loading = false; Message = null; RefreshStatus(); }
     private void ToggleTheme() => DataGrid.DarkTheme = !DataGrid.DarkTheme;
-    private void SaveLayout() { _savedLayout = DataGrid.SaveLayout(); StoreLayout(_savedLayout); SetMessage("Layout saved, including columns, filters, groups and summaries."); }
+    private void SaveLayout() { FlushPendingSearch(); _savedLayout = DataGrid.SaveLayout(); StoreLayout(_savedLayout); SetMessage("Layout saved, including columns, filters, groups and summaries."); }
     private void RestoreLayout()
     {
         string? layout = _savedLayout ?? ReadLayout();
         if (layout is null) { SetMessage("No saved layout yet."); return; }
-        DataGrid.RestoreLayout(layout); SetMessage("Saved layout restored.");
+        _searchTimer.Stop(); DataGrid.RestoreLayout(layout); SetMessage("Saved layout restored.");
     }
     private async void ShowColumns()
     {
@@ -284,22 +300,24 @@ public sealed partial class MainPage : Page
     }
     private async void RunValidation()
     {
-        try { var report = await DataGridScene.Validation.ExtendedValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
+        try { var report = await DataGridScene.Validation.WorkspaceValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
         catch (Exception error) { SetMessage(error.Message); }
     }
     public void Export(string format)
     {
+        FlushPendingSearch();
         if (!DataGrid.CommitEdit()) return;
         var options = new ExportOptions { Fields = DataGrid.ColumnLayout!.DisplayColumns().Where(column => column.Field != "Trend").Select(column => column.Field).ToArray() };
         if (format == "xlsx") SaveFile("orders.xlsx", GridExporter.ToXlsx(DataGrid.View!, options), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         else if (format == "html") SaveFile("orders.html", System.Text.Encoding.UTF8.GetBytes(GridExporter.ToHtml(DataGrid.View!, options with { UseDisplayFormatting = true })), "text/html");
         else SaveFile("orders.csv", System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(GridExporter.ToCsv(DataGrid.View!, options))).ToArray(), "text/csv");
     }
-    private void Run(Action action) { try { action(); } catch (Exception error) { SetMessage(error.Message); } }
+    private void Run(Action action) { try { action(); } catch (Exception error) { SetMessage(error.Message); } finally { RefreshStatus(); } }
     public void SetMessage(string message) { Message = message; RefreshStatus(); }
     private void RefreshStatus()
     {
         if (DataGrid.View is null) return;
+        RefreshOptions();
         _subtitle.Text = $"{RecordCount:N0} orders · {Scenario} · virtualized rows and columns";
         _status.Text = Message ?? DataGrid.LastError ?? $"{DataGrid.View.FilteredRecords.Count:N0} of {RecordCount:N0} records     |     {(DataGrid.SelectionMode == GridSelectionMode.Cells ? $"{DataGrid.Selection.SelectedCellCount:N0} cells" : $"{DataGrid.Selection.Count:N0} rows")} selected     |     Skia canvas · Uno Platform";
         _filterDescription.Text = DataGrid.View.Query.Filter is null && DataGrid.View.Query.Search.Length == 0 ? "No filter applied     ·     Right-click a column header for sorting, grouping and layout options" : $"Filter active   ·   {DataGrid.View.FilteredRecords.Count:N0} matching records   ·   Use Clear to remove filters";

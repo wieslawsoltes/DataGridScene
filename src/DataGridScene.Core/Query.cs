@@ -63,7 +63,7 @@ public enum GridRowKind { Data, Group, Detail }
 public sealed record ViewRow(GridRowKind Kind, string Key, int Depth, GridRecord? Record = null, GridGroup? Group = null);
 
 /// <summary>Materialized data view; visuals remain virtualized independently.</summary>
-public sealed class GridView : IDisposable
+public sealed partial class GridView : IDisposable
 {
     private bool _disposed;
     private readonly HashSet<string> _collapsed = new(StringComparer.Ordinal);

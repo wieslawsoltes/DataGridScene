@@ -22,7 +22,7 @@ public sealed record GridMetrics
     public bool ShowBands { get; init; }
 }
 public enum HitRegion { None, GroupPanel, GroupChip, GroupRemove, Band, Header, Filter, DataCell, Indicator, GroupRow, Detail, Summary }
-public sealed record GridHit(HitRegion Region, int RowIndex = -1, string? Field = null, RectD Bounds = default, string? GroupKey = null);
+public sealed record GridHit(HitRegion Region, int RowIndex = -1, string? Field = null, RectD Bounds = default, string? GroupKey = null, string? BandKey = null);
 public sealed record GroupChip(string Field, string Caption, RectD Bounds);
 
 /// <summary>One shared geometry snapshot for painting, hit testing, editors and automation.</summary>
@@ -34,6 +34,7 @@ public sealed class GridFrame
     public RowHeightIndex Heights { get; }
     public GridMetrics Metrics { get; }
     public ColumnViewport Columns { get; }
+    public IReadOnlyList<BandSlot> Bands { get; }
     public VisibleRange VisibleRows { get; }
     public IReadOnlyList<GroupChip> GroupChips { get; }
     public double Width { get; }
@@ -51,12 +52,13 @@ public sealed class GridFrame
         View = view; Layout = layout; Selection = selection; Heights = heights; Metrics = metrics;
         Width = Math.Max(0, width); Height = Math.Max(0, height);
         BandTop = metrics.ShowGroupPanel ? metrics.GroupPanelHeight : 0;
-        HeaderTop = BandTop + (metrics.ShowBands ? metrics.BandHeight : 0);
+        HeaderTop = BandTop + (metrics.ShowBands ? metrics.BandHeight * layout.BandLevels : 0);
         FilterTop = HeaderTop + metrics.HeaderHeight;
         BodyTop = FilterTop + (metrics.ShowFilterRow ? metrics.FilterHeight : 0);
         FooterTop = Math.Max(BodyTop, Height - metrics.FooterHeight);
         OffsetY = Math.Clamp(offsetY, 0, Math.Max(0, heights.TotalHeight - BodyHeight));
         Columns = layout.Compute(Width, offsetX);
+        Bands = metrics.ShowBands ? layout.ComputeBands(Width, Columns) : Array.Empty<BandSlot>();
         VisibleRows = heights.Visible(OffsetY, BodyHeight, 1);
         var chips = new List<GroupChip>(); double x = 12;
         foreach (var group in view.Query.Groups)
@@ -85,7 +87,13 @@ public sealed class GridFrame
             return new(HitRegion.GroupPanel);
         }
         var column = Columns.HitTest(x);
-        if (y < HeaderTop) return new(HitRegion.Band, Field: column?.Field);
+        if (y < HeaderTop)
+        {
+            int bandRow = (int)((y - BandTop) / Metrics.BandHeight);
+            var band = Bands.FirstOrDefault(item => item.Contains(x, bandRow));
+            return band is null ? new(HitRegion.None) : new(HitRegion.Band, Field: band.FirstField,
+                Bounds: new(band.X, BandTop + band.Depth * Metrics.BandHeight, band.Width, band.RowSpan * Metrics.BandHeight), BandKey: band.Key);
+        }
         if (y < FilterTop) return new(HitRegion.Header, Field: column?.Field, Bounds: column is null ? new(0, HeaderTop, GridLayout.IndicatorWidth, Metrics.HeaderHeight) : new(column.X, HeaderTop, column.Width, Metrics.HeaderHeight));
         if (y < BodyTop) return new(HitRegion.Filter, Field: column?.Field, Bounds: column is null ? default : new(column.ClipLeft, FilterTop, column.ClipRight - column.ClipLeft, Metrics.FilterHeight));
         if (y >= FooterTop) return new(HitRegion.Summary, Field: column?.Field);

@@ -97,11 +97,6 @@ public sealed class GridCanvasRenderer : IDisposable
         {
             var column = frame.View.Table.Schema.Columns[slot.SchemaIndex];
             canvas.Save(); canvas.ClipRect(new SKRect((float)slot.ClipLeft, (float)frame.BandTop, (float)slot.ClipRight, (float)frame.BodyTop));
-            if (frame.Metrics.ShowBands)
-            {
-                Text(canvas, column.Band ?? "General", slot.X + 8, frame.BandTop + frame.Metrics.BandHeight / 2, slot.Width - 16, Palette.Muted, true, ColumnAlignment.Center);
-                Line(canvas, slot.X, frame.HeaderTop - 0.5, slot.X + slot.Width, frame.HeaderTop - 0.5, Palette.Line);
-            }
             Text(canvas, column.Caption, slot.X + 9, frame.HeaderTop + frame.Metrics.HeaderHeight / 2, slot.Width - 42, bold: true);
             var sort = frame.View.Query.Sorts.Select((value, index) => (value, index)).FirstOrDefault(item => item.value.Field.Equals(column.Field, StringComparison.OrdinalIgnoreCase));
             if (sort.value is not null)
@@ -122,7 +117,20 @@ public sealed class GridCanvasRenderer : IDisposable
                 bool hasFilter = FilterTexts.TryGetValue(column.Field, out string? filter);
                 Text(canvas, hasFilter ? filter! : "Filter…", slot.X + 9, frame.FilterTop + frame.Metrics.FilterHeight / 2, slot.Width - 18, hasFilter ? Palette.Accent : Palette.Muted);
             }
-            Line(canvas, slot.X + slot.Width - 0.5, frame.BandTop, slot.X + slot.Width - 0.5, frame.BodyTop, Palette.Line);
+            Line(canvas, slot.X + slot.Width - 0.5, frame.HeaderTop, slot.X + slot.Width - 0.5, frame.BodyTop, Palette.Line);
+            canvas.Restore();
+        }
+        foreach (var band in frame.Bands)
+        {
+            double top = frame.BandTop + band.Depth * frame.Metrics.BandHeight;
+            double bottom = top + band.RowSpan * frame.Metrics.BandHeight;
+            canvas.Save();
+            canvas.ClipRect(new SKRect((float)band.ClipLeft, (float)top, (float)band.ClipRight, (float)bottom));
+            Fill(canvas, band.X, top, band.Width, bottom - top, Palette.Header);
+            // Keep the caption visible for partially clipped, very wide bands.
+            Text(canvas, band.Caption, band.ClipLeft + 8, (top + bottom) / 2, band.ClipRight - band.ClipLeft - 16, Palette.Muted, true, ColumnAlignment.Center);
+            Line(canvas, band.X, bottom - 0.5, band.X + band.Width, bottom - 0.5, Palette.Line);
+            Line(canvas, band.X + band.Width - 0.5, top, band.X + band.Width - 0.5, bottom, Palette.Line);
             canvas.Restore();
         }
         CheckBox(canvas, 19, frame.HeaderTop + frame.Metrics.HeaderHeight / 2, frame.Selection.Count > 0 && frame.Selection.Count == frame.View.FilteredRecords.Count, frame.Selection.Count > 0 && frame.Selection.Count != frame.View.FilteredRecords.Count);

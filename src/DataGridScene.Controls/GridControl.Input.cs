@@ -24,7 +24,7 @@ public sealed partial class GridControl
     {
         _pressedCell = _previousCell = null;
         _previousTable = null; _validDoubleTap = false;
-        _pressedHeader = null; _resizing = _dragging = false;
+        _pressedHeader = _pressedBand = null; _bandWeights = null; _resizing = _dragging = false;
         Renderer.DragMarkerX = null;
     }
     private bool _resizing, _dragging;
@@ -38,7 +38,7 @@ public sealed partial class GridControl
         _surface.PointerPressed += SurfacePressed;
         _surface.PointerMoved += SurfaceMoved;
         _surface.PointerReleased += SurfaceReleased;
-        _surface.PointerCaptureLost += (_, _) => { _pressedHeader = null; _pressedCell = null; _resizing = _dragging = false; Renderer.DragMarkerX = null; Redraw(); };
+        _surface.PointerCaptureLost += (_, _) => { _pressedHeader = _pressedBand = null; _bandWeights = null; _pressedCell = null; _resizing = _dragging = false; Renderer.DragMarkerX = null; Redraw(); };
         _surface.PointerWheelChanged += (_, args) =>
         {
             var point = args.GetCurrentPoint(_surface);
@@ -53,6 +53,7 @@ public sealed partial class GridControl
             var point = args.GetPosition(_surface); var hit = Frame.HitTest(point.X, point.Y);
             if (_validDoubleTap && hit.Region == HitRegion.DataCell && hit.Field is not null) Safe(() => BeginEdit(View!.Rows[hit.RowIndex].Record!.Id, hit.Field));
             else if (hit.Region == HitRegion.Header && hit.Field is not null) Safe(() => BestFit(hit.Field));
+            else if (hit.Region == HitRegion.Band && hit.BandKey is not null) Safe(() => BestFitBand(hit.BandKey));
             args.Handled = true;
         };
         _surface.RightTapped += (_, args) =>
@@ -63,7 +64,7 @@ public sealed partial class GridControl
         _surface.ManipulationMode = ManipulationModes.TranslateX | ManipulationModes.TranslateY | ManipulationModes.TranslateInertia;
         _surface.ManipulationDelta += (_, args) =>
         {
-            if (_pressedHeader is null && _pressedCell is null) ScrollTo(_offsetX - args.Delta.Translation.X, _offsetY - args.Delta.Translation.Y);
+            if (_pressedHeader is null && _pressedBand is null && _pressedCell is null) ScrollTo(_offsetX - args.Delta.Translation.X, _offsetY - args.Delta.Translation.Y);
             args.Handled = true;
         };
     }
@@ -75,6 +76,7 @@ public sealed partial class GridControl
         if (!CommitEdit()) { args.Handled = true; return; }
         Focus(FocusState.Pointer);
         var point = pointer.Position; var hit = Frame.HitTest(point.X, point.Y);
+        if (TryBandPressed(hit, point, args)) { args.Handled = true; return; }
         _validDoubleTap = false;
         if (hit.Region != HitRegion.DataCell) { _previousCell = null; _previousTable = null; }
         Safe(() =>
@@ -123,6 +125,7 @@ public sealed partial class GridControl
     {
         if (ColumnLayout is null || Frame is null) return;
         var point = args.GetCurrentPoint(_surface).Position;
+        if (TryBandMoved(point)) { args.Handled = true; return; }
         if (_pressedCell is not null && View is not null)
         {
             if (Math.Abs(point.X - _pressPoint.X) + Math.Abs(point.Y - _pressPoint.Y) > 5)
@@ -149,6 +152,7 @@ public sealed partial class GridControl
     }
     private void SurfaceReleased(object sender, PointerRoutedEventArgs args)
     {
+        if (TryBandReleased(args.GetCurrentPoint(_surface).Position, args)) { args.Handled = true; return; }
         if (_pressedCell is not null)
         {
             _pressedCell = null; _surface.ReleasePointerCapture(args.Pointer); args.Handled = true; return;
@@ -245,6 +249,7 @@ public sealed partial class GridControl
     }
     private void ShowContext(GridHit hit, Point point)
     {
+        if (hit.Region == HitRegion.Band && hit.BandKey is not null) { ShowBandContext(hit.BandKey, point); return; }
         var flyout = new MenuFlyout();
         if (hit.Field is string field && hit.Region is HitRegion.Header or HitRegion.Summary)
         {
