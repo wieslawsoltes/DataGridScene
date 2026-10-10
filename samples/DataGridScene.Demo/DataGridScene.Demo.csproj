@@ -16,6 +16,8 @@
          browser's initial EFIGS shard. This also covers Polish decimal parsing. -->
     <InvariantGlobalization>false</InvariantGlobalization>
     <WasmIncludeFullIcuData>true</WasmIncludeFullIcuData>
+    <!-- Uno bootstrap uses the Blazor SDK boot manifest even for a non-Blazor UI. -->
+    <BlazorWebAssemblyLoadAllGlobalizationData>true</BlazorWebAssemblyLoadAllGlobalizationData>
     <WasmShellWebAppBasePath Condition="'$(WasmShellWebAppBasePath)' == ''">/DataGridScene/</WasmShellWebAppBasePath>
     <WasmShellEnableLogProfiler>false</WasmShellEnableLogProfiler>
   </PropertyGroup>
