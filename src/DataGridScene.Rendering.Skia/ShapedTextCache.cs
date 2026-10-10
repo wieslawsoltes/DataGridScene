@@ -22,8 +22,17 @@ public sealed class ShapedTextCache : IDisposable
     public ShapedTextCache(float size = 13, int capacity = 4096, SKTypeface? typeface = null)
     {
         if (capacity < 16) throw new ArgumentOutOfRangeException(nameof(capacity));
+        if (!float.IsFinite(size) || size <= 0 || size > 256) throw new ArgumentOutOfRangeException(nameof(size));
         Capacity = capacity;
-        _typeface = typeface is null ? SKTypeface.FromFamilyName("Arial") : SKTypeface.FromFamilyName(typeface.FamilyName, typeface.FontStyle);
+        // A loaded web font is not installed in SKFontManager. Looking it up again
+        // by FamilyName silently selects the browser's monospace fallback.
+        if (typeface is null) _typeface = SKTypeface.FromFamilyName("Arial");
+        else
+        {
+            using var stream = typeface.OpenStream(out int faceIndex);
+            using var serialized = SKData.Create(stream);
+            _typeface = SKTypeface.FromData(serialized, faceIndex) ?? throw new InvalidOperationException("Unable to retain the supplied typeface.");
+        }
         _normal = new(_typeface, size) { Edging = SKFontEdging.Antialias, Subpixel = true };
         _bold = new(_typeface, size) { Edging = SKFontEdging.Antialias, Subpixel = true, Embolden = true };
         _shaper = new(_typeface);

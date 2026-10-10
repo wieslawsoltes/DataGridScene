@@ -99,6 +99,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(GridControl));
         CancelEdit();
+        ResetPointerState();
         if (View is not null) { View.Changed -= ViewChanged; View.Dispose(); }
         if (ColumnLayout is not null) ColumnLayout.Changed -= LayoutChanged;
         if (History is not null) History.Changed -= HistoryChanged;
@@ -284,7 +285,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     private void ClearError() { if (LastError is null) return; LastError = null; Changed(); }
     private void Report(Exception exception) { LastError = exception.Message; Error?.Invoke(this, LastError); Changed(); }
     private void Safe(Action action) { try { action(); } catch (Exception exception) { Report(exception); } }
-    public void Dispose()
+    public new void Dispose()
     {
         if (_disposed) return;
         CancelEdit(); _disposed = true;
