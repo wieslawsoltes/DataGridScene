@@ -77,6 +77,8 @@ try {
   await test('bands.nested-demo-and-no-overlap', async () => {
     await reset(); await clickAction('scenario-Nested bands');
     const state = await waitFor(state => state.frame.bandLevels === 2);
+    assert.equal(state.options['Column bands'], true);
+    assert.equal(state.options.dataset, '1,000 records');
     assert.ok(state.frame.bands.some(band => band.key === '/Customer/Location' && band.depth === 1));
     const bands = state.frame.bands;
     for (let a = 0; a < bands.length; a++) for (let b = a + 1; b < bands.length; b++) {
@@ -149,6 +151,9 @@ try {
     assert.equal(restored.selectedCellCount, saved.selectedCellCount);
     assert.deepEqual(restored.expansion, saved.expansion);
     assert.equal(restored.darkTheme, true);
+    assert.equal(restored.options.selectionMode, 'Cells');
+    assert.equal(restored.options['Dark grid'], true);
+    assert.equal(restored.options['Column bands'], true);
     assert.equal(restored.filterTexts.Company, 'Alpine');
     assert.equal(restored.filteredCount, saved.filteredCount);
     assert.equal(restored.verticalOffset, saved.verticalOffset);
@@ -211,6 +216,37 @@ try {
     await page.keyboard.press('Control+A'); await page.keyboard.insertText('First new record'); await page.keyboard.press('Enter');
     const state = await waitFor(state => state.recordCount === 1 && !state.isEditing);
     assert.equal(state.records[0].id, 10001); assert.equal(state.records[0].values.Company, 'First new record');
+  });
+  await test('options.two-way-checkboxes-and-dataset', async () => {
+    await reset(); await clickAction('scenario-Nested bands');
+    let state = await snapshot();
+    assert.equal(state.options['Column bands'], true);
+    assert.equal(state.options.dataset, '1,000 records');
+    await clickAction('option-Column bands');
+    state = await waitFor(state => !state.showBands);
+    assert.equal(state.options['Column bands'], false);
+    await clickAction('option-Dark grid');
+    state = await waitFor(state => state.darkTheme);
+    assert.equal(state.options['Dark grid'], true);
+    await command('selection', { mode: 'Cells' });
+    assert.equal((await snapshot()).options.selectionMode, 'Cells');
+  });
+  await test('options.pending-search-survives-grid-focus', async () => {
+    await reset();
+    const point = cellPoint(await snapshot(), 'Company');
+    await clickAction('search');
+    await page.waitForFunction(() => document.activeElement?.id === 'uno-input');
+    await page.keyboard.press('Control+A'); await page.keyboard.insertText('Alpine');
+    await page.mouse.click(point.x, point.y);
+    const state = await waitFor(state => state.filteredCount > 0 && state.filteredCount < 1000);
+    assert.equal(state.query.search, 'Alpine'); assert.equal(state.options.search, 'Alpine');
+    assert.ok(state.records.every(record => record.values.Company === 'Alpine Ski House'));
+    await clickAction('save-layout');
+    await clickAction('clear');
+    await waitFor(state => state.filteredCount === 1000);
+    await clickAction('restore-layout');
+    const restored = await waitFor(state => state.filteredCount > 0 && state.filteredCount < 1000);
+    assert.equal(restored.query.search, 'Alpine'); assert.equal(restored.options.search, 'Alpine');
   });
   await test('workspace.no-unhandled-browser-errors', async () => assert.deepEqual(errors, []));
 } catch (error) {

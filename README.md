@@ -53,7 +53,7 @@ Save/restore includes column order, widths, pinning, band paths, filters, search
 
 ## Validation and deployment
 
-The shared C# suite currently contains **151 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline checks plus 14 band/workspace checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
+The shared C# suite currently contains **151 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline checks plus 16 band/workspace checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
 
 CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell and opens the nested-band sample.
 

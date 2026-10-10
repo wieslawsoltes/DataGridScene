@@ -37,7 +37,7 @@ public static partial class BrowserBridge
                 }).ToArray()
             },
             rendering = new { grid.Renderer.CellsDrawn, grid.Renderer.RowsDrawn, grid.Renderer.DrawCount, grid.Renderer.CachedTextRuns, grid.Renderer.LastDrawMilliseconds, grid.Renderer.FontFamily },
-            buttons = page.ActionBounds()
+            buttons = page.ActionBounds(), options = page.OptionValues()
         }, Json);
     }
     [JSExport]

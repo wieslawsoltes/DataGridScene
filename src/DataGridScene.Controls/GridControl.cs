@@ -48,9 +48,9 @@ public sealed partial class GridControl : UserControl, IDisposable
     public event EventHandler? StateChanged;
     public event EventHandler? SearchRequested;
     public event EventHandler<string>? Error;
-    public bool ShowGroupPanel { get => _metrics.ShowGroupPanel; set { _metrics = _metrics with { ShowGroupPanel = value }; UpdateGeometry(); } }
-    public bool ShowFilterRow { get => _metrics.ShowFilterRow; set { _metrics = _metrics with { ShowFilterRow = value }; UpdateGeometry(); } }
-    public bool ShowBands { get => _metrics.ShowBands; set { _metrics = _metrics with { ShowBands = value }; UpdateGeometry(); } }
+    public bool ShowGroupPanel { get => _metrics.ShowGroupPanel; set { _metrics = _metrics with { ShowGroupPanel = value }; UpdateGeometry(); Changed(); } }
+    public bool ShowFilterRow { get => _metrics.ShowFilterRow; set { _metrics = _metrics with { ShowFilterRow = value }; UpdateGeometry(); Changed(); } }
+    public bool ShowBands { get => _metrics.ShowBands; set { _metrics = _metrics with { ShowBands = value }; UpdateGeometry(); Changed(); } }
     public double RowHeight
     {
         get => _metrics.RowHeight;
@@ -59,7 +59,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public bool DarkTheme
     {
         get => _dark;
-        set { _dark = value; Renderer.Palette = value ? GridPalette.Dark : GridPalette.Light; RequestedTheme = value ? ElementTheme.Dark : ElementTheme.Light; Redraw(); }
+        set { _dark = value; Renderer.Palette = value ? GridPalette.Dark : GridPalette.Light; RequestedTheme = value ? ElementTheme.Dark : ElementTheme.Light; Redraw(); Changed(); }
     }
     public Func<GridRecord, GridDetailData>? DetailProvider { get => Renderer.DetailProvider; set { Renderer.DetailProvider = value; Redraw(); } }
 
