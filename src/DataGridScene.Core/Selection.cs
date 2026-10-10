@@ -9,7 +9,7 @@ public enum GridSelectionMode { MultipleRows, SingleRow, Cells }
 /// Identity-based selection. Rectangular cell selections share immutable field sets across rows,
 /// avoiding one HashSet allocation per row when selecting a large block or the entire data set.
 /// </summary>
-public sealed class GridSelection
+public sealed partial class GridSelection
 {
     private readonly HashSet<long> _selected = [];
     private readonly Dictionary<long, ImmutableHashSet<string>> _cells = [];
