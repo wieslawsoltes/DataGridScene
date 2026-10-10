@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { startServer } from './server.mjs';
+import { copyThroughKeyboard } from './clipboard.mjs';
 
 const directory = path.resolve(process.env.BROWSER_RESULTS ?? 'artifacts/browser-validation');
 await mkdir(directory, { recursive: true });
@@ -161,8 +162,11 @@ try {
     await page.evaluate(() => navigator.clipboard.writeText('Pasted Alpha\tGdańsk\r\nPasted Beta\tKraków'));
     await page.keyboard.press('Control+V');
     await waitFor(state => state.records[0].values.Company === 'Pasted Alpha' && state.records[1].values.Company === 'Pasted Beta');
-    await page.keyboard.down('Shift'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); await page.keyboard.press('Control+C');
-    const copied = await page.evaluate(() => navigator.clipboard.readText()); assert.ok(copied.includes('Pasted Alpha')); assert.ok(copied.includes('Gdańsk')); assert.ok(copied.includes('Pasted Beta'));
+    await page.keyboard.down('Shift'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); const copied = await copyThroughKeyboard(page);
+    assert.ok(copied.startsWith('10001\tPasted Alpha\tGdańsk\t'));
+    assert.ok(copied.includes('10002\tPasted Beta\tKraków\t'));
+    assert.equal(copied.trimEnd().split(/\r?\n/).length, 2);
+     assert.ok(copied.includes('Pasted Alpha')); assert.ok(copied.includes('Gdańsk')); assert.ok(copied.includes('Pasted Beta'));
   });
   await test('editing.double-click-after-reset-is-not-stale', async () => {
     await reset(); let point = cellPoint(await snapshot(), 'Company');
@@ -214,8 +218,7 @@ try {
     await reset(); await command('selection', { mode: 'Cells' });
     const state = await snapshot(), a = cellPoint(state, 'Company'), b = cellPoint(state, 'City', 1);
     await page.mouse.click(a.x, a.y); await page.keyboard.down('Shift'); await page.mouse.click(b.x, b.y); await page.keyboard.up('Shift');
-    await waitFor(state => state.selectedCellCount === 4); await page.keyboard.press('Control+C');
-    let copied = await page.evaluate(() => navigator.clipboard.readText());
+    await waitFor(state => state.selectedCellCount === 4); const copied = await copyThroughKeyboard(page);
     const rows = copied.trimEnd().split(/\r?\n/).map(row => row.split('\t'));
     assert.equal(rows.length, 2); assert.ok(rows.every(row => row.length === 2));
     assert.equal(rows[0][0], 'Alpine Ski House'); assert.equal(rows[0][1], 'London');
