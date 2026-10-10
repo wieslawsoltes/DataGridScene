@@ -12,7 +12,7 @@ public sealed class GridCanvasRenderer : IDisposable
     private readonly SKPaint _fill = new() { IsAntialias = false };
     private readonly SKPaint _stroke = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1 };
     private readonly SKPaint _textPaint = new() { IsAntialias = true };
-    private readonly ShapedTextCache _text = new();
+    private ShapedTextCache _text = new();
     public GridPalette Palette { get; set; } = GridPalette.Light;
     public IList<ConditionalFormatRule> ConditionalFormats { get; } = new List<ConditionalFormatRule>();
     public Func<GridRecord, GridDetailData>? DetailProvider { get; set; }
@@ -24,6 +24,13 @@ public sealed class GridCanvasRenderer : IDisposable
     public double LastDrawMilliseconds { get; private set; }
     public int CachedTextRuns => _text.Count;
     public string FontFamily => _text.FontFamily;
+    /// <summary>Retains an independent copy; the caller may dispose its typeface immediately.</summary>
+    public void SetTypeface(SKTypeface typeface, float size = 13)
+    {
+        ArgumentNullException.ThrowIfNull(typeface);
+        var replacement = new ShapedTextCache(size, typeface: typeface);
+        _text.Dispose(); _text = replacement;
+    }
     public float MeasureText(string text, bool bold = false) => _text.Measure(text, bold);
     private void Fill(SKCanvas canvas, double x, double y, double width, double height, SKColor color)
     {
@@ -139,7 +146,7 @@ public sealed class GridCanvasRenderer : IDisposable
             }
             if (row.Kind == GridRowKind.Detail) { DrawDetail(canvas, row.Record!, bounds); continue; }
             var record = row.Record!;
-            bool selected = frame.Selection.Contains(record.Id);
+            bool selected = frame.Selection.Mode != GridSelectionMode.Cells && frame.Selection.Contains(record.Id);
             SKColor background = selected ? Palette.Selection : index % 2 == 0 ? Palette.Background : Palette.Alternate;
             Fill(canvas, 0, bounds.Y, frame.Width, bounds.Height, background);
             foreach (var slot in frame.Columns.Slots)
@@ -149,7 +156,9 @@ public sealed class GridCanvasRenderer : IDisposable
                 canvas.Save(); canvas.ClipRect(new SKRect((float)slot.ClipLeft, (float)bounds.Y, (float)slot.ClipRight, (float)bounds.Bottom));
                 GridCellStyle? style = null;
                 foreach (var rule in ConditionalFormats) if (rule.Matches(record, column)) style = rule.Style;
-                if (style?.Background is SKColor fill && !selected) Fill(canvas, slot.X, bounds.Y, slot.Width, bounds.Height, fill);
+                bool cellSelected = frame.Selection.ContainsCell(record.Id, column.Field);
+                if (frame.Selection.Mode == GridSelectionMode.Cells && cellSelected) Fill(canvas, slot.X, bounds.Y, slot.Width, bounds.Height, Palette.Selection);
+                if (style?.Background is SKColor fill && !cellSelected) Fill(canvas, slot.X, bounds.Y, slot.Width, bounds.Height, fill);
                 DrawCell(canvas, column, value, rectangle, frame.View.Table.Schema.Culture, style);
                 if (frame.Selection.FocusedCell is { } focus && focus.RecordId == record.Id && focus.Field.Equals(column.Field, StringComparison.OrdinalIgnoreCase))
                 {
@@ -160,7 +169,7 @@ public sealed class GridCanvasRenderer : IDisposable
             }
             // Row selector is painted after columns so frozen cells cannot cover it.
             Fill(canvas, 0, bounds.Y, GridLayout.IndicatorWidth, bounds.Height, background);
-            CheckBox(canvas, 14, bounds.Y + bounds.Height / 2, selected);
+            CheckBox(canvas, 14, bounds.Y + bounds.Height / 2, frame.Selection.Contains(record.Id), frame.Selection.Mode == GridSelectionMode.Cells && frame.Selection.Contains(record.Id));
             Chevron(canvas, 30, bounds.Y + bounds.Height / 2, frame.View.IsDetailExpanded(record.Id), Palette.Muted);
             Line(canvas, 0, bounds.Bottom - 0.5, frame.Width, bounds.Bottom - 0.5, Palette.Line.WithAlpha(150));
         }

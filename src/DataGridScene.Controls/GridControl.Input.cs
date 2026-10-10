@@ -16,6 +16,17 @@ public sealed partial class GridControl
 {
     private GridHit? _pressedHeader;
     private Point _pressPoint;
+    private CellAddress? _pressedCell;
+    private CellAddress? _previousCell;
+    private GridTable? _previousTable;
+    private bool _validDoubleTap;
+    private void ResetPointerState()
+    {
+        _pressedCell = _previousCell = null;
+        _previousTable = null; _validDoubleTap = false;
+        _pressedHeader = null; _resizing = _dragging = false;
+        Renderer.DragMarkerX = null;
+    }
     private bool _resizing, _dragging;
     private double _originalWidth;
     private static bool Down(VirtualKey key) => (InputKeyboardSource.GetKeyStateForCurrentThread(key) & CoreVirtualKeyStates.Down) != 0;
@@ -27,7 +38,7 @@ public sealed partial class GridControl
         _surface.PointerPressed += SurfacePressed;
         _surface.PointerMoved += SurfaceMoved;
         _surface.PointerReleased += SurfaceReleased;
-        _surface.PointerCaptureLost += (_, _) => { _pressedHeader = null; _resizing = _dragging = false; Renderer.DragMarkerX = null; Redraw(); };
+        _surface.PointerCaptureLost += (_, _) => { _pressedHeader = null; _pressedCell = null; _resizing = _dragging = false; Renderer.DragMarkerX = null; Redraw(); };
         _surface.PointerWheelChanged += (_, args) =>
         {
             var point = args.GetCurrentPoint(_surface);
@@ -40,7 +51,7 @@ public sealed partial class GridControl
         {
             if (Frame is null) return;
             var point = args.GetPosition(_surface); var hit = Frame.HitTest(point.X, point.Y);
-            if (hit.Region == HitRegion.DataCell && hit.Field is not null) Safe(() => BeginEdit(View!.Rows[hit.RowIndex].Record!.Id, hit.Field));
+            if (_validDoubleTap && hit.Region == HitRegion.DataCell && hit.Field is not null) Safe(() => BeginEdit(View!.Rows[hit.RowIndex].Record!.Id, hit.Field));
             else if (hit.Region == HitRegion.Header && hit.Field is not null) Safe(() => BestFit(hit.Field));
             args.Handled = true;
         };
@@ -52,7 +63,7 @@ public sealed partial class GridControl
         _surface.ManipulationMode = ManipulationModes.TranslateX | ManipulationModes.TranslateY | ManipulationModes.TranslateInertia;
         _surface.ManipulationDelta += (_, args) =>
         {
-            if (_pressedHeader is null) ScrollTo(_offsetX - args.Delta.Translation.X, _offsetY - args.Delta.Translation.Y);
+            if (_pressedHeader is null && _pressedCell is null) ScrollTo(_offsetX - args.Delta.Translation.X, _offsetY - args.Delta.Translation.Y);
             args.Handled = true;
         };
     }
@@ -64,12 +75,14 @@ public sealed partial class GridControl
         if (!CommitEdit()) { args.Handled = true; return; }
         Focus(FocusState.Pointer);
         var point = pointer.Position; var hit = Frame.HitTest(point.X, point.Y);
+        _validDoubleTap = false;
+        if (hit.Region != HitRegion.DataCell) { _previousCell = null; _previousTable = null; }
         Safe(() =>
         {
             switch (hit.Region)
             {
                 case HitRegion.Header when hit.Field is null:
-                    if (Selection.Count > 0 && Selection.Count == View.FilteredRecords.Count) Selection.Clear(); else Selection.SelectAll(View);
+                    if (Selection.Count > 0 && Selection.Count == View.FilteredRecords.Count) Selection.Clear(); else Selection.SelectAll(View, SelectionFields);
                     break;
                 case HitRegion.Header when hit.Field is not null:
                     _pressPoint = point; _pressedHeader = hit;
@@ -86,11 +99,18 @@ public sealed partial class GridControl
                 case HitRegion.Indicator:
                     var row = View.Rows[hit.RowIndex].Record!;
                     if (point.X >= 24) View.ToggleDetail(row.Id);
-                    else Selection.Select(View, new(row.Id, ColumnLayout.DisplayColumns()[0].Field), Shift(args.KeyModifiers), true);
+                    else Selection.Select(View, new(row.Id, ColumnLayout.DisplayColumns()[0].Field), Shift(args.KeyModifiers), true, SelectionFields);
                     break;
                 case HitRegion.DataCell when hit.Field is not null:
                     var record = View.Rows[hit.RowIndex].Record!;
-                    Selection.Select(View, new(record.Id, hit.Field), Shift(args.KeyModifiers), Control(args.KeyModifiers));
+                    var address = new CellAddress(record.Id, hit.Field);
+                    _validDoubleTap = ReferenceEquals(_previousTable, Table) && _previousCell == address;
+                    _previousTable = Table; _previousCell = address;
+                    Selection.Select(View, address, Shift(args.KeyModifiers), Control(args.KeyModifiers), SelectionFields);
+                    if (!Control(args.KeyModifiers) && pointer.PointerDevice.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Mouse)
+                    {
+                        _pressedCell = address; _pressPoint = point; _surface.CapturePointer(args.Pointer);
+                    }
                     var column = Table!.Schema[hit.Field];
                     if (!IsReadOnly && !column.IsReadOnly && column.Presentation == ColumnPresentation.CheckBox)
                         History!.Execute([new(record.Id, hit.Field, column.GetValue(record) is not true)]);
@@ -101,8 +121,23 @@ public sealed partial class GridControl
     }
     private void SurfaceMoved(object sender, PointerRoutedEventArgs args)
     {
-        if (_pressedHeader?.Field is not string field || ColumnLayout is null || Frame is null) return;
+        if (ColumnLayout is null || Frame is null) return;
         var point = args.GetCurrentPoint(_surface).Position;
+        if (_pressedCell is not null && View is not null)
+        {
+            if (Math.Abs(point.X - _pressPoint.X) + Math.Abs(point.Y - _pressPoint.Y) > 5)
+            {
+                if (point.Y < Frame.BodyTop) _offsetY = Math.Max(0, _offsetY - RowHeight);
+                else if (point.Y > Frame.FooterTop) _offsetY += RowHeight;
+                UpdateGeometry();
+                var target = Frame!.HitTest(Math.Clamp(point.X, GridLayout.IndicatorWidth + 1, Math.Max(GridLayout.IndicatorWidth + 1, Frame.Width - 1)),
+                    Math.Clamp(point.Y, Frame.BodyTop + 1, Math.Max(Frame.BodyTop + 1, Frame.FooterTop - 1)));
+                if (target.Region == HitRegion.DataCell && target.Field is not null)
+                    Selection.Select(View, new(View.Rows[target.RowIndex].Record!.Id, target.Field), extend: true, columnOrder: SelectionFields);
+            }
+            args.Handled = true; return;
+        }
+        if (_pressedHeader?.Field is not string field) return;
         if (_resizing) Safe(() => ColumnLayout.SetWidth(field, Math.Clamp(_originalWidth + point.X - _pressPoint.X, 36, 4096)));
         else if (Math.Abs(point.X - _pressPoint.X) + Math.Abs(point.Y - _pressPoint.Y) > 6)
         {
@@ -114,6 +149,10 @@ public sealed partial class GridControl
     }
     private void SurfaceReleased(object sender, PointerRoutedEventArgs args)
     {
+        if (_pressedCell is not null)
+        {
+            _pressedCell = null; _surface.ReleasePointerCapture(args.Pointer); args.Handled = true; return;
+        }
         var pressed = _pressedHeader;
         if (pressed?.Field is not string field || Frame is null) return;
         var point = args.GetCurrentPoint(_surface).Position;
@@ -141,7 +180,7 @@ public sealed partial class GridControl
         bool handled = true;
         Safe(() =>
         {
-            if (control && args.Key == VirtualKey.A) Selection.SelectAll(View);
+            if (control && args.Key == VirtualKey.A) Selection.SelectAll(View, SelectionFields);
             else if (control && args.Key == VirtualKey.C) CopySelection();
             else if (control && args.Key == VirtualKey.V) PasteClipboard();
             else if (control && args.Key == VirtualKey.Z) { if (!IsReadOnly) History!.Undo(); }
@@ -154,7 +193,7 @@ public sealed partial class GridControl
             {
                 var column = Table!.Schema[cell.Field];
                 if (!IsReadOnly && !column.IsReadOnly && column.DataType == typeof(bool)) History!.Execute([new(cell.RecordId, cell.Field, column.GetValue(Table[cell.RecordId]) is not true)]);
-                else Selection.Select(View, cell, toggle: true);
+                else Selection.Select(View, cell, toggle: true, columnOrder: SelectionFields);
             }
             else if (args.Key is VirtualKey.Up or VirtualKey.Down or VirtualKey.Left or VirtualKey.Right or VirtualKey.Home or VirtualKey.End or VirtualKey.PageUp or VirtualKey.PageDown or VirtualKey.Tab)
                 Navigate(args.Key, shift, control);
@@ -198,7 +237,7 @@ public sealed partial class GridControl
         }
         if (candidate < 0 || candidate >= View.Rows.Count) return;
         var next = new CellAddress(View.Rows[candidate].Record!.Id, columns[Math.Clamp(columnIndex, 0, columns.Count - 1)].Field);
-        Selection.Select(View, next, extend: shift && key != VirtualKey.Tab); EnsureVisible(next); Focus(FocusState.Keyboard);
+        Selection.Select(View, next, extend: shift && key != VirtualKey.Tab, columnOrder: SelectionFields); EnsureVisible(next); Focus(FocusState.Keyboard);
     }
     private MenuFlyoutItem Menu(string text, Action action)
     {
@@ -238,7 +277,7 @@ public sealed partial class GridControl
         {
             flyout.Items.Add(Menu("Copy selected rows", CopySelection));
             flyout.Items.Add(Menu("Paste cells", PasteClipboard));
-            flyout.Items.Add(Menu("Select all filtered records", () => Selection.SelectAll(View!)));
+            flyout.Items.Add(Menu("Select all filtered records", () => Selection.SelectAll(View!, SelectionFields)));
             flyout.Items.Add(Menu("Clear selection", Selection.Clear));
             flyout.Items.Add(new MenuFlyoutSeparator());
             flyout.Items.Add(Menu("Expand all groups", () => View!.ExpandAll()));

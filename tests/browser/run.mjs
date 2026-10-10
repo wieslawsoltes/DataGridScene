@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { startServer } from './server.mjs';
+import { copyThroughKeyboard } from './clipboard.mjs';
 
 const directory = path.resolve(process.env.BROWSER_RESULTS ?? 'artifacts/browser-validation');
 await mkdir(directory, { recursive: true });
@@ -27,6 +28,13 @@ async function waitFor(predicate, timeout = 10000) {
   const start = Date.now();
   while (Date.now() - start < timeout) { const current = await snapshot(); if (predicate(current)) return current; await page.waitForTimeout(60); }
   throw new Error('State assertion timed out: ' + JSON.stringify(await snapshot()));
+}
+async function editorReady() {
+  await waitFor(state => state.isEditing && state.isEditorReady);
+  // Wait for the native input actually owned/focused by Uno, not just a managed
+  // IsEditing flag set before its Loaded event and HTML input creation.
+  await page.waitForFunction(() => document.activeElement?.id === 'uno-input', undefined, { timeout: 10000 });
+  await settle();
 }
 async function reset(count = 1000) { await page.keyboard.press('Escape'); await command('reset', { count }); await waitFor(state => state.ready && state.rendering.drawCount > 0 && state.recordCount === count); }
 function cellPoint(state, field, rowOffset = 0) {
@@ -53,7 +61,7 @@ async function test(name, action) {
 }
 try {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await page.waitForFunction(() => globalThis.dataGridScene?.ready || globalThis.dataGridSceneError, { timeout: 180000 });
+  await page.waitForFunction(() => globalThis.dataGridScene?.ready || globalThis.dataGridSceneError, undefined, { timeout: 180000 });
   assert.equal(await page.evaluate(() => globalThis.dataGridSceneError ?? null), null);
   await waitFor(state => state.ready && state.frame && state.rendering.drawCount > 0, 60000);
   await page.screenshot({ path: path.join(directory, 'overview.png'), fullPage: true });
@@ -61,6 +69,7 @@ try {
 
   await test('startup.actual-wasm-grid', async () => {
     const state = await snapshot(); assert.equal(state.recordCount, 10000); assert.equal(state.filteredCount, 10000);
+    assert.match(state.rendering.fontFamily, /Open Sans/i, 'Canvas must use the package typeface rather than a monospace fallback');
     assert.ok(state.rendering.cellsDrawn > 20 && state.rendering.cellsDrawn < 600);
     assert.ok(state.rendering.rowsDrawn > 5 && state.rendering.rowsDrawn < 80);
     assert.ok(state.frame.columns.length < state.columns.length, 'Columns must be virtualized');
@@ -70,7 +79,7 @@ try {
     const report = await page.evaluate(() => globalThis.dataGridScene.validate());
     await writeFile(path.join(directory, 'wasm-conformance.json'), JSON.stringify(report, null, 2));
     assert.equal(report.passed, true, report.results.filter(result => !result.passed).map(result => result.name + ': ' + result.error).join('\n'));
-    assert.ok(report.results.length >= 83); console.log(`WASM conformance: ${report.passedCount}/${report.results.length}`);
+    assert.ok(report.results.length >= 108); console.log(`WASM conformance: ${report.passedCount}/${report.results.length}`);
   });
   await test('pointer.select-cell-and-stable-identity', async () => {
     await reset(); const point = cellPoint(await snapshot(), 'Company');
@@ -110,7 +119,7 @@ try {
   await test('filter.auto-row-real-text-input', async () => {
     await reset(); const state = await snapshot(); const column = state.frame.columns.find(column => column.field === 'Company');
     await page.mouse.click(state.origin.x + column.clipLeft + 25, state.origin.y + state.frame.filterTop + 14);
-    await waitFor(state => state.isEditing && state.editingField === 'Company');
+    await editorReady(); assert.equal((await snapshot()).editingField, 'Company');
     await page.keyboard.type('Alpine'); await page.keyboard.press('Enter');
     const filtered = await waitFor(state => state.filteredCount > 0 && state.filteredCount < 1000 && !state.isEditing);
     assert.ok(filtered.records.every(row => row.values.Company.includes('Alpine')));
@@ -124,15 +133,15 @@ try {
   });
   await test('editing.commit-undo-redo-through-ui', async () => {
     await reset(); const point = cellPoint(await snapshot(), 'Company');
-    await page.mouse.click(point.x, point.y); await page.keyboard.press('F2'); await waitFor(state => state.isEditing);
-    await page.keyboard.press('Control+A'); await page.keyboard.insertText('Edited company Δ'); await page.keyboard.press('Enter');
+    await page.mouse.click(point.x, point.y); await page.keyboard.press('F2'); await editorReady();
+    await page.keyboard.press('Control+A'); await page.keyboard.insertText('Edited company Δ'); await waitFor(state => state.editorText === 'Edited company Δ'); await page.keyboard.press('Enter');
     await waitFor(state => !state.isEditing && state.records.find(row => row.id === point.id)?.values.Company === 'Edited company Δ');
     await clickButton('undo'); await waitFor(state => state.records.find(row => row.id === point.id)?.values.Company === 'Alpine Ski House');
     await clickButton('redo'); await waitFor(state => state.records.find(row => row.id === point.id)?.values.Company === 'Edited company Δ');
   });
   await test('editing.validation-retains-editor', async () => {
     await reset(); const point = cellPoint(await snapshot(), 'Company');
-    await page.mouse.click(point.x, point.y); await page.keyboard.press('F2'); await waitFor(state => state.isEditing);
+    await page.mouse.click(point.x, point.y); await page.keyboard.press('F2'); await editorReady();
     await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace'); await page.keyboard.press('Enter');
     const invalid = await waitFor(state => state.isEditing && !!state.lastError);
     assert.equal(invalid.records[0].values.Company, 'Alpine Ski House');
@@ -140,7 +149,7 @@ try {
   });
   await test('editing.escape-cancels', async () => {
     await reset(); const point = cellPoint(await snapshot(), 'Company'); await page.mouse.click(point.x, point.y); await page.keyboard.press('F2');
-    await waitFor(state => state.isEditing); await page.keyboard.press('Control+A'); await page.keyboard.type('Do not commit'); await page.keyboard.press('Escape');
+    await editorReady(); await page.keyboard.press('Control+A'); await page.keyboard.type('Do not commit'); await page.keyboard.press('Escape');
     const state = await waitFor(state => !state.isEditing); assert.equal(state.records[0].values.Company, 'Alpine Ski House'); assert.equal(state.canUndo, false);
   });
   await test('keyboard.range-selection', async () => {
@@ -153,8 +162,71 @@ try {
     await page.evaluate(() => navigator.clipboard.writeText('Pasted Alpha\tGdańsk\r\nPasted Beta\tKraków'));
     await page.keyboard.press('Control+V');
     await waitFor(state => state.records[0].values.Company === 'Pasted Alpha' && state.records[1].values.Company === 'Pasted Beta');
-    await page.keyboard.down('Shift'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); await page.keyboard.press('Control+C');
-    const copied = await page.evaluate(() => navigator.clipboard.readText()); assert.ok(copied.includes('Pasted Alpha')); assert.ok(copied.includes('Gdańsk')); assert.ok(copied.includes('Pasted Beta'));
+    await page.keyboard.down('Shift'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift'); const copied = await copyThroughKeyboard(page);
+    assert.ok(copied.startsWith('10001\tPasted Alpha\tGdańsk\t'));
+    assert.ok(copied.includes('10002\tPasted Beta\tKraków\t'));
+    assert.equal(copied.trimEnd().split(/\r?\n/).length, 2);
+     assert.ok(copied.includes('Pasted Alpha')); assert.ok(copied.includes('Gdańsk')); assert.ok(copied.includes('Pasted Beta'));
+  });
+  await test('editing.double-click-after-reset-is-not-stale', async () => {
+    await reset(); let point = cellPoint(await snapshot(), 'Company');
+    await page.mouse.click(point.x, point.y);
+    await reset(); point = cellPoint(await snapshot(), 'Company');
+    await page.mouse.click(point.x, point.y); await settle();
+    assert.equal((await snapshot()).isEditing, false, 'A new table must not inherit a preceding double tap');
+    await page.mouse.dblclick(point.x, point.y); await editorReady();
+    await page.keyboard.press('Escape'); await waitFor(state => !state.isEditing);
+  });
+  await test('selection.cell-rectangle-pointer', async () => {
+    await reset(); await command('selection', { mode: 'Cells' });
+    const state = await snapshot(), a = cellPoint(state, 'Company'), b = cellPoint(state, 'City', 1);
+    await page.mouse.click(a.x, a.y); await page.keyboard.down('Shift');
+    await page.mouse.click(b.x, b.y); await page.keyboard.up('Shift');
+    const selected = await waitFor(state => state.selectedCellCount === 4);
+    assert.equal(selected.selectedCount, 2); assert.equal(selected.isEditing, false);
+    await page.screenshot({ path: path.join(directory, 'cell-selection.png') });
+  });
+  await test('selection.cell-rectangle-keyboard', async () => {
+    await reset(); await command('selection', { mode: 'Cells' });
+    const a = cellPoint(await snapshot(), 'Company'); await page.mouse.click(a.x, a.y);
+    await page.keyboard.down('Shift'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift');
+    const state = await waitFor(state => state.selectedCellCount === 4);
+    assert.equal(state.focus.field, 'City'); assert.equal(state.focus.recordId, 10002);
+  });
+  await test('selection.cell-control-toggle', async () => {
+    await reset(); await command('selection', { mode: 'Cells' });
+    const state = await snapshot(), a = cellPoint(state, 'Company'), b = cellPoint(state, 'City', 2);
+    await page.mouse.click(a.x, a.y); await page.keyboard.down('Control'); await page.mouse.click(b.x, b.y); await page.keyboard.up('Control');
+    await waitFor(state => state.selectedCellCount === 2);
+    await page.keyboard.down('Control'); await page.mouse.click(a.x, a.y); await page.keyboard.up('Control');
+    await waitFor(state => state.selectedCellCount === 1 && state.selectedIds[0] === b.id);
+  });
+  await test('selection.cell-mouse-drag', async () => {
+    await reset(); await command('selection', { mode: 'Cells' });
+    const state = await snapshot(), a = cellPoint(state, 'Company'), b = cellPoint(state, 'City', 3);
+    await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 16 }); await page.mouse.up();
+    const selected = await waitFor(state => state.selectedCellCount === 8); assert.equal(selected.selectedCount, 4);
+    assert.equal(selected.isEditing, false);
+  });
+  await test('selection.single-row-ignores-range-modifier', async () => {
+    await reset(); await command('selection', { mode: 'SingleRow' });
+    const a = cellPoint(await snapshot(), 'Company'); await page.mouse.click(a.x, a.y);
+    await page.keyboard.down('Shift'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.keyboard.up('Shift');
+    const state = await waitFor(state => state.focus?.recordId === 10003); assert.equal(state.selectedCount, 1);
+  });
+  await test('clipboard.cell-rectangle-and-scalar-fill', async () => {
+    await reset(); await command('selection', { mode: 'Cells' });
+    const state = await snapshot(), a = cellPoint(state, 'Company'), b = cellPoint(state, 'City', 1);
+    await page.mouse.click(a.x, a.y); await page.keyboard.down('Shift'); await page.mouse.click(b.x, b.y); await page.keyboard.up('Shift');
+    await waitFor(state => state.selectedCellCount === 4); const copied = await copyThroughKeyboard(page);
+    const rows = copied.trimEnd().split(/\r?\n/).map(row => row.split('\t'));
+    assert.equal(rows.length, 2); assert.ok(rows.every(row => row.length === 2));
+    assert.equal(rows[0][0], 'Alpine Ski House'); assert.equal(rows[0][1], 'London');
+    await page.evaluate(() => navigator.clipboard.writeText('Filled Δ')); await page.keyboard.press('Control+V');
+    await waitFor(state => state.records[0].values.Company === 'Filled Δ' && state.records[1].values.City === 'Filled Δ');
+    assert.notEqual((await snapshot()).records[2].values.Company, 'Filled Δ');
+    await page.keyboard.press('Control+Z'); await waitFor(state => state.records[0].values.Company === 'Alpine Ski House');
+    assert.equal((await snapshot()).selectedCellCount, 4);
   });
   await test('detail.keyboard-expand-collapse', async () => {
     await reset(); const point = cellPoint(await snapshot(), 'Company'); await page.mouse.click(point.x, point.y); await page.keyboard.press('F4');
@@ -202,7 +274,7 @@ try {
   await test('hidpi.two-device-pixels', async () => {
     const highContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 2 });
     try {
-      const highPage = await highContext.newPage(); await highPage.goto(url); await highPage.waitForFunction(() => globalThis.dataGridScene?.ready, { timeout: 120000 });
+      const highPage = await highContext.newPage(); await highPage.goto(url); await highPage.waitForFunction(() => globalThis.dataGridScene?.ready, undefined, { timeout: 120000 });
       await highPage.waitForFunction(() => globalThis.dataGridScene.snapshot().rendering.drawCount > 0);
       const state = await highPage.evaluate(() => globalThis.dataGridScene.snapshot()); const point = cellPoint(state, 'Company');
       await highPage.mouse.click(point.x, point.y); await highPage.waitForFunction(id => globalThis.dataGridScene.snapshot().focus?.recordId === id, point.id);
@@ -212,7 +284,7 @@ try {
   await test('touch.cell-selection', async () => {
     const touchContext = await browser.newContext({ viewport: { width: 768, height: 1024 }, hasTouch: true, deviceScaleFactor: 1 });
     try {
-      const touchPage = await touchContext.newPage(); await touchPage.goto(url); await touchPage.waitForFunction(() => globalThis.dataGridScene?.ready, { timeout: 120000 });
+      const touchPage = await touchContext.newPage(); await touchPage.goto(url); await touchPage.waitForFunction(() => globalThis.dataGridScene?.ready, undefined, { timeout: 120000 });
       await touchPage.waitForFunction(() => globalThis.dataGridScene.snapshot().rendering.drawCount > 0);
       const state = await touchPage.evaluate(() => globalThis.dataGridScene.snapshot()); const point = cellPoint(state, 'Company');
       await touchPage.touchscreen.tap(point.x, point.y); await touchPage.waitForFunction(id => globalThis.dataGridScene.snapshot().focus?.recordId === id, point.id);

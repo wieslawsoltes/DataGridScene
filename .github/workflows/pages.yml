@@ -1,0 +1,36 @@
+name: Publish Pages
+on:
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Download the exact validated browser artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: browser-application
+          path: site
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy tested Uno WebAssembly application
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -20,6 +20,8 @@ public sealed partial class GridControl
     private bool _filterEditor;
     private bool _committing;
     public bool IsEditing => _editor is not null;
+    public bool IsEditorReady => _editor is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } && _editor.FocusState != FocusState.Unfocused;
+    public string? EditorText => _editor is TextBox text ? text.Text : _editor is ComboBox combo ? Convert.ToString(combo.SelectedItem) : null;
     public string? EditingField => _editField;
     public long? EditingRecordId => _editor is not null && !_filterEditor ? _editRecordId : null;
 
@@ -56,6 +58,9 @@ public sealed partial class GridControl
     private void ShowEditor(string label)
     {
         _editorBorder = new Border { Child = _editor, BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue) };
+        // Focus before a TextBox is loaded does not create Uno's browser input host.
+        // Reapply it on Loaded so IME, insertText and paste reach the real editor.
+        _editor!.Loaded += EditorLoaded;
         _overlay.Children.Add(_editorBorder);
         AutomationProperties.SetName(_editor!, label);
         AutomationProperties.SetAutomationId(_editor!, "GridCellEditor");
@@ -64,6 +69,15 @@ public sealed partial class GridControl
         _editor.Focus(FocusState.Programmatic);
         if (_editor is TextBox text) text.SelectAll();
         ClearError(); Changed();
+    }
+    private void EditorLoaded(object sender, RoutedEventArgs args)
+    {
+        if (ReferenceEquals(sender, _editor))
+        {
+            _editor!.Focus(FocusState.Programmatic);
+            if (_editor is TextBox text) text.SelectAll();
+            Changed();
+        }
     }
     private void PositionEditor()
     {
@@ -95,7 +109,7 @@ public sealed partial class GridControl
     public void CancelEdit() { _transaction?.Cancel(); CloseEditor(); ClearError(); }
     private void CloseEditor()
     {
-        if (_editor is not null) _editor.KeyDown -= EditorKeyDown;
+        if (_editor is not null) { _editor.KeyDown -= EditorKeyDown; _editor.Loaded -= EditorLoaded; }
         if (_editorBorder is not null) { _overlay.Children.Remove(_editorBorder); _editorBorder.Child = null; }
         _editor = null; _editorBorder = null; _transaction = null; _editField = null; _filterEditor = false;
         Redraw(); Changed();
@@ -114,8 +128,7 @@ public sealed partial class GridControl
     public string CopySelectionText(bool includeHeaders = false)
     {
         RequireView();
-        return GridExporter.ToCsv(View!, new() { Fields = ColumnLayout!.DisplayColumns().Select(column => column.Field).ToArray(),
-            SelectedIds = Selection.SelectedIds.ToHashSet(), IncludeHeaders = includeHeaders, Delimiter = '\t', ProtectSpreadsheetFormulas = false, UseDisplayFormatting = true });
+        return GridClipboard.Copy(View!, Selection, SelectionFields, includeHeaders);
     }
     public void CopySelection()
     {
@@ -135,18 +148,7 @@ public sealed partial class GridControl
     {
         RequireView(); if (IsReadOnly) throw new InvalidOperationException("This grid is read-only.");
         if (!CommitEdit()) return;
-        if (Selection.FocusedCell is not { } focused) throw new InvalidOperationException("Select a starting cell before pasting.");
-        var cells = DelimitedText.Parse(text, '\t', maximumRows: 10000);
-        var columns = ColumnLayout!.DisplayColumns();
-        int startColumn = columns.ToList().FindIndex(column => column.Field.Equals(focused.Field, StringComparison.OrdinalIgnoreCase));
-        var rows = View!.Rows.Skip(View.IndexOfRecord(focused.RecordId)).Where(row => row.Kind == GridRowKind.Data).ToArray();
-        if (cells.Count > rows.Length) throw new InvalidOperationException("The clipboard contains more rows than the remaining visible records.");
-        var edits = new List<CellEdit>();
-        for (int row = 0; row < cells.Count; row++)
-        {
-            if (startColumn < 0 || startColumn + cells[row].Count > columns.Count) throw new InvalidOperationException("The clipboard extends beyond the visible columns.");
-            for (int column = 0; column < cells[row].Count; column++) edits.Add(new(rows[row].Record!.Id, columns[startColumn + column].Field, cells[row][column]));
-        }
+        var edits = GridClipboard.CreatePaste(View!, Selection, SelectionFields, text);
         History!.Execute(edits); ClearError();
     }
 }
