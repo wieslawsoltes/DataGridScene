@@ -266,20 +266,62 @@ public sealed partial class GridControl : UserControl, IDisposable
             ColumnLayout!.SetWidth(column.Field, Math.Clamp(width, 50, 640));
         }
     }
-    public string SaveLayout() => LayoutSerializer.Save(new GridLayoutDocument
+    public string SaveLayout(bool includeSelection = true)
     {
-        Columns = ColumnLayout?.Columns ?? Array.Empty<ColumnState>(), Query = View?.Query ?? new(),
-        RowHeight = RowHeight, ShowFilterRow = ShowFilterRow, ShowGroupPanel = ShowGroupPanel, Theme = DarkTheme ? "Dark" : "Light"
-    });
+        RequireView();
+        if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
+        return LayoutSerializer.Save(new GridLayoutDocument
+        {
+            Columns = ColumnLayout!.Columns, Query = View!.Query with { Filter = _criteria },
+            FilterTexts = new Dictionary<string, string>(_filterTexts, StringComparer.OrdinalIgnoreCase),
+            RowHeight = RowHeight, ShowFilterRow = ShowFilterRow, ShowGroupPanel = ShowGroupPanel,
+            ShowBands = ShowBands, Theme = DarkTheme ? "Dark" : "Light", SelectionMode = SelectionMode,
+            HorizontalOffset = _offsetX, VerticalOffset = _offsetY,
+            RowHeights = new Dictionary<string, double>(_rowHeights, StringComparer.Ordinal),
+            ViewState = View.CaptureState(),
+            Selection = includeSelection ? Selection.CaptureState() : null
+        });
+    }
     public void RestoreLayout(string json)
     {
-        RequireView(); if (!CommitEdit()) return;
+        RequireView();
+        if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
         var document = LayoutSerializer.Load(json, Table!.Schema);
-        // Both operations were validated against this schema by LayoutSerializer before any mutation.
-        View!.SetQuery(document.Query); ColumnLayout!.RestoreColumns(document.Columns);
-        _criteria = document.Query.Filter; _filterTexts.Clear(); Renderer.FilterTexts = _filterTexts;
-        _metrics = _metrics with { RowHeight = document.RowHeight, ShowFilterRow = document.ShowFilterRow, ShowGroupPanel = document.ShowGroupPanel };
-        DarkTheme = document.Theme == "Dark"; RebuildRows();
+        var nextLayout = new GridLayout(Table.Schema);
+        nextLayout.RestoreColumns(document.Columns);
+        // Stage data shaping before replacing any live control state. For example,
+        // a computed column may reject a sort only when actual records are present.
+        var nextView = new GridView(Table);
+        try
+        {
+            nextView.SetQuery(document.EffectiveQuery());
+            nextView.RestoreState(document.ViewState);
+            if (document.Selection is not null) new GridSelection().RestoreState(nextView, document.Selection);
+        }
+        catch { nextView.Dispose(); throw; }
+        var previousView = View!;
+        previousView.Changed -= ViewChanged;
+        ColumnLayout!.Changed -= LayoutChanged;
+        View = nextView; ColumnLayout = nextLayout;
+        View.Changed += ViewChanged; ColumnLayout.Changed += LayoutChanged;
+        previousView.Dispose();
+        ResetPointerState();
+        _criteria = document.Query.Filter;
+        _filterTexts.Clear();
+        foreach (var pair in document.FilterTexts) _filterTexts.Add(pair.Key, pair.Value);
+        Renderer.FilterTexts = _filterTexts;
+        _rowHeights.Clear();
+        foreach (var pair in document.RowHeights) _rowHeights.Add(pair.Key, pair.Value);
+        _metrics = _metrics with
+        {
+            RowHeight = document.RowHeight, ShowFilterRow = document.ShowFilterRow,
+            ShowGroupPanel = document.ShowGroupPanel, ShowBands = document.ShowBands
+        };
+        _offsetX = document.HorizontalOffset; _offsetY = document.VerticalOffset;
+        SelectionMode = document.SelectionMode;
+        if (document.Selection is not null) Selection.RestoreState(View, document.Selection);
+        DarkTheme = document.Theme == "Dark";
+        RebuildRows(); ClearError();
     }
     private void RequireView() { ObjectDisposedException.ThrowIf(_disposed, this); if (View is null) throw new InvalidOperationException("Assign a GridTable first."); }
     private void ClearError() { if (LastError is null) return; LastError = null; Changed(); }

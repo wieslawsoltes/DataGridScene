@@ -23,13 +23,13 @@ public static partial class BrowserBridge
             focus = grid.Selection.FocusedCell, selectedIds = grid.Selection.SelectedIds.Take(100).ToArray(), selectedCount = grid.Selection.Count,
             canUndo = grid.History?.CanUndo, canRedo = grid.History?.CanRedo,
             grid.HorizontalOffset, grid.VerticalOffset, grid.RowHeight, grid.ShowBands, grid.DarkTheme,
-            query = view?.Query, columns = grid.ColumnLayout?.Columns,
+            query = view?.Query, columns = grid.ColumnLayout?.Columns, filterTexts = grid.FilterTexts, expansion = view?.CaptureState(),
             records = view?.FilteredRecords.Take(12).Select(record => new { record.Id, record.Version, values = grid.Table!.Schema.Columns.Where(column => column.Field != "Trend").ToDictionary(column => column.Field, column => column.GetValue(record)) }).ToArray(),
             origin = new { origin.X, origin.Y },
             frame = frame is null ? null : new
             {
                 frame.Width, frame.Height, frame.HeaderTop, frame.FilterTop, frame.BodyTop, frame.FooterTop,
-                columns = frame.Columns.Slots, groups = frame.GroupChips,
+                columns = frame.Columns.Slots, groups = frame.GroupChips, bands = frame.Bands, bandLevels = grid.ColumnLayout!.BandLevels,
                 rows = Enumerable.Range(frame.VisibleRows.Start, frame.VisibleRows.Count).Select(index => new
                 {
                     index, kind = view!.Rows[index].Kind.ToString(), id = view.Rows[index].Record?.Id, key = view.Rows[index].Key,
@@ -51,6 +51,8 @@ public static partial class BrowserBridge
             {
                 case "reset": page.Reload(input.TryGetProperty("count", out var count) ? count.GetInt32() : 10000); break;
                 case "scenario": page.ApplyScenario(Text("name")); break;
+                case "focus-grid": grid.Focus(FocusState.Programmatic); break;
+                case "clear-data": grid.CancelEdit(); grid.Table!.Clear(); break;
                 case "selection": grid.SelectionMode = Enum.Parse<GridSelectionMode>(Text("mode")); break;
                 case "search": grid.SetSearch(Text("value")); break;
                 case "filter": grid.SetColumnFilter(Text("field"), Text("value")); break;
@@ -64,6 +66,10 @@ public static partial class BrowserBridge
                 case "visible": grid.ColumnLayout!.SetVisible(Text("field"), input.GetProperty("value").GetBoolean()); break;
                 case "theme": grid.DarkTheme = input.GetProperty("dark").GetBoolean(); break;
                 case "bands": grid.ShowBands = input.GetProperty("value").GetBoolean(); break;
+                case "band-path": grid.ColumnLayout!.SetBandPath(Text("field"), input.GetProperty("path").EnumerateArray().Select(value => value.GetString()!).ToArray()); break;
+                case "band-pin": grid.ColumnLayout!.SetBandPin(Text("key"), Enum.Parse<ColumnPin>(Text("pin"))); break;
+                case "band-visible": grid.ColumnLayout!.SetBandVisible(Text("key"), input.GetProperty("value").GetBoolean()); break;
+                case "row-height": grid.SetRowHeight(Text("key"), input.GetProperty("height").GetDouble()); break;
                 case "restore": grid.RestoreLayout(Text("value")); break;
                 case "layout": return JsonSerializer.Serialize(new { ok = true, layout = grid.SaveLayout() }, Json);
                 case "export": page.Export(Text("format")); break;
@@ -75,5 +81,5 @@ public static partial class BrowserBridge
         catch (Exception error) { return JsonSerializer.Serialize(new { ok = false, error = error.Message }, Json); }
     }
     [JSExport]
-    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.ExtendedValidationSuite.RunAsync(), Json);
+    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.WorkspaceValidationSuite.RunAsync(), Json);
 }

@@ -134,7 +134,7 @@ public sealed partial class MainPage : Page
     {
         var navigation = new StackPanel { Spacing = 4, Padding = new Thickness(10, 18, 10, 12) };
         navigation.Children.Add(new TextBlock { Text = "DATA GRID", Margin = new Thickness(12, 0, 0, 14), FontSize = 11, CharacterSpacing = 80, Foreground = Brush("#777777"), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        foreach (var (name, glyph) in new[] { ("Overview", "▦"), ("Grouping", "▤"), ("Filtering", "⌕"), ("Editing", "✎"), ("Cell selection", "▧"), ("Conditional formatting", "◐"), ("Master-detail", "⊞"), ("Column bands", "▥"), ("Performance", "↗") })
+        foreach (var (name, glyph) in new[] { ("Overview", "▦"), ("Grouping", "▤"), ("Filtering", "⌕"), ("Editing", "✎"), ("Cell selection", "▧"), ("Conditional formatting", "◐"), ("Master-detail", "⊞"), ("Column bands", "▥"), ("Nested bands", "▥"), ("Performance", "↗") })
         {
             var button = Button("scenario-" + name, glyph + "   " + name, () => ApplyScenario(name), false);
             button.HorizontalAlignment = HorizontalAlignment.Stretch; button.HorizontalContentAlignment = HorizontalAlignment.Left;
@@ -213,13 +213,24 @@ public sealed partial class MainPage : Page
         Scenario = name; Message = null;
         _loading = true; _search.Text = ""; _loading = false;
         if (name == "Performance") { Reload(100000); Scenario = name; }
-        DataGrid.ShowBands = name == "Column bands";
+        DataGrid.ShowBands = name is "Column bands" or "Nested bands";
         DataGrid.IsReadOnly = false;
         DataGrid.SelectionMode = name == "Cell selection" ? GridSelectionMode.Cells : GridSelectionMode.MultipleRows;
         var query = DefaultQuery();
         if (name == "Grouping") query = query with { Groups = [new("Region"), new("Status")] };
         if (name == "Filtering") query = query with { Filter = GridFilter.And(new FieldFilter("Total", FilterOperator.GreaterOrEqual, 5000m), new FieldFilter("Status", FilterOperator.NotEqual, "Cancelled")), Sorts = [new("Total", SortDirection.Descending)] };
         DataGrid.SetQuery(query);
+        if (name == "Nested bands")
+        {
+            foreach (var column in DataGrid.Table!.Schema.Columns)
+            {
+                string section = column.Field is "Company" or "Salesperson" ? "Contact" : "Location";
+                if (column.Band == "Customer") DataGrid.ColumnLayout!.SetBandPath(column.Field, "Customer", section);
+                else DataGrid.ColumnLayout!.SetBandPath(column.Field, column.Band ?? "General");
+            }
+        }
+        else foreach (var column in DataGrid.Table!.Schema.Columns)
+            DataGrid.ColumnLayout!.SetBandPath(column.Field, column.Band ?? "General");
         if (name == "Master-detail") foreach (var row in DataGrid.View!.FilteredRecords.Take(2)) if (!DataGrid.View.IsDetailExpanded(row.Id)) DataGrid.View.ToggleDetail(row.Id);
         if (name == "Conditional formatting") { DataGrid.EnsureVisible(new(DataGrid.View!.FilteredRecords[0].Id, "Total")); }
         foreach (var (key, element) in _actions) if (key.StartsWith("scenario-") && element is Button button) button.Background = key == "scenario-" + name ? Brush("#e4eef7") : Brush("#f7f7f7");
@@ -228,7 +239,7 @@ public sealed partial class MainPage : Page
     private void AddRecord()
     {
         if (!DataGrid.CommitEdit() || DataGrid.IsReadOnly) return;
-        int index = checked((int)(DataGrid.Table!.Records.Max(record => record.Id) - 10001 + 1));
+        int index = checked((int)(DataGrid.Table!.Records.Select(record => record.Id).DefaultIfEmpty(10000).Max() - 10001 + 1));
         var row = OrderData.CreateRecord(index); DataGrid.Table.Add(row); DataGrid.ClearFilters();
         var cell = new CellAddress(row.Id, "Company"); DataGrid.Selection.Select(DataGrid.View!, cell); DataGrid.EnsureVisible(cell); DataGrid.BeginEdit(row.Id, "Company");
     }
@@ -284,7 +295,7 @@ public sealed partial class MainPage : Page
     }
     private async void RunValidation()
     {
-        try { var report = await DataGridScene.Validation.ExtendedValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
+        try { var report = await DataGridScene.Validation.WorkspaceValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
         catch (Exception error) { SetMessage(error.Message); }
     }
     public void Export(string format)
