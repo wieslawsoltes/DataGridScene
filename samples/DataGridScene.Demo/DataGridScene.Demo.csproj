@@ -12,6 +12,10 @@
     <IsPackable>false</IsPackable>
     <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
     <WasmEnableThreads>false</WasmEnableThreads>
+    <!-- Runtime culture changes and explicit field cultures need more than the
+         browser's initial EFIGS shard. This also covers Polish decimal parsing. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <WasmIncludeFullIcuData>true</WasmIncludeFullIcuData>
     <WasmShellWebAppBasePath Condition="'$(WasmShellWebAppBasePath)' == ''">/DataGridScene/</WasmShellWebAppBasePath>
     <WasmShellEnableLogProfiler>false</WasmShellEnableLogProfiler>
   </PropertyGroup>
@@ -20,9 +24,6 @@
     <ProjectReference Include="../../tests/DataGridScene.Validation/DataGridScene.Validation.csproj" />
     <TrimmerRootAssembly Include="DataGridScene.Core" />
     <TrimmerRootAssembly Include="DataGridScene.Layout" />
-    <!-- The browser diagnostic snapshot reflects over these records too. Without
-         preserving their constructors, System.Text.Json throws for GroupChip in
-         trimmed Release builds before the browser suite can inspect the grid. -->
     <TrimmerRootAssembly Include="DataGridScene.Rendering.Skia" />
     <TrimmerRootAssembly Include="DataGridScene.Validation" />
     <TrimmerRootAssembly Include="DataGridScene.Demo" />

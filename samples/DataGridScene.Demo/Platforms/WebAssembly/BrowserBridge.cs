@@ -18,7 +18,8 @@ public static partial class BrowserBridge
         return JsonSerializer.Serialize(new
         {
             ready = page.Ready, page.Scenario, page.RecordCount, filteredCount = view?.FilteredRecords.Count, viewRowCount = view?.Rows.Count,
-            page.Message, grid.LastError, grid.IsEditing, grid.EditingField, grid.EditingRecordId,
+            page.Message, grid.LastError, grid.IsEditing, grid.IsEditorReady, grid.EditorText, grid.EditingField, grid.EditingRecordId,
+            selectionMode = grid.SelectionMode.ToString(), selectedCellCount = grid.Selection.SelectedCellCount,
             focus = grid.Selection.FocusedCell, selectedIds = grid.Selection.SelectedIds.Take(100).ToArray(), selectedCount = grid.Selection.Count,
             canUndo = grid.History?.CanUndo, canRedo = grid.History?.CanRedo,
             grid.HorizontalOffset, grid.VerticalOffset, grid.RowHeight, grid.ShowBands, grid.DarkTheme,
@@ -50,6 +51,7 @@ public static partial class BrowserBridge
             {
                 case "reset": page.Reload(input.TryGetProperty("count", out var count) ? count.GetInt32() : 10000); break;
                 case "scenario": page.ApplyScenario(Text("name")); break;
+                case "selection": grid.SelectionMode = Enum.Parse<GridSelectionMode>(Text("mode")); break;
                 case "search": grid.SetSearch(Text("value")); break;
                 case "filter": grid.SetColumnFilter(Text("field"), Text("value")); break;
                 case "criteria": grid.SetCriteria(Text("value")); break;
@@ -73,5 +75,5 @@ public static partial class BrowserBridge
         catch (Exception error) { return JsonSerializer.Serialize(new { ok = false, error = error.Message }, Json); }
     }
     [JSExport]
-    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.ValidationSuite.RunAsync(), Json);
+    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.ExtendedValidationSuite.RunAsync(), Json);
 }

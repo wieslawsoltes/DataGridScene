@@ -30,6 +30,7 @@ public sealed partial class MainPage : Page
     private string? _savedLayout;
     private bool _loading;
     private bool _bridgeInstalled;
+    private bool _initializing;
     public string Scenario { get; private set; } = "Overview";
     public bool Ready { get; private set; }
     public string? Message { get; private set; }
@@ -72,11 +73,25 @@ public sealed partial class MainPage : Page
             _properties.Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
             _search.Width = compact ? 170 : 240;
         };
-        Loaded += (_, _) =>
+        Loaded += async (_, _) =>
         {
-            if (!Ready) Reload(10000);
-            _metricsTimer.Start();
-            if (!_bridgeInstalled) { _bridgeInstalled = true; InstallBrowserBridge(); }
+            if (_initializing) return;
+            _initializing = true;
+            try
+            {
+                if (!Ready)
+                {
+                    await DataGrid.LoadTypefaceAsync(new Uri("ms-appx:///Uno.Fonts.OpenSans/Fonts/OpenSans-Regular.ttf"));
+                    Reload(10000);
+                }
+                _metricsTimer.Start();
+            }
+            catch (Exception error) { SetMessage("Initialization failed: " + error.Message); }
+            finally
+            {
+                _initializing = false;
+                if (!_bridgeInstalled) { _bridgeInstalled = true; InstallBrowserBridge(); }
+            }
         };
         Unloaded += (_, _) => { _metricsTimer.Stop(); _searchTimer.Stop(); };
     }
@@ -119,7 +134,7 @@ public sealed partial class MainPage : Page
     {
         var navigation = new StackPanel { Spacing = 4, Padding = new Thickness(10, 18, 10, 12) };
         navigation.Children.Add(new TextBlock { Text = "DATA GRID", Margin = new Thickness(12, 0, 0, 14), FontSize = 11, CharacterSpacing = 80, Foreground = Brush("#777777"), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        foreach (var (name, glyph) in new[] { ("Overview", "▦"), ("Grouping", "▤"), ("Filtering", "⌕"), ("Editing", "✎"), ("Conditional formatting", "◐"), ("Master-detail", "⊞"), ("Column bands", "▥"), ("Performance", "↗") })
+        foreach (var (name, glyph) in new[] { ("Overview", "▦"), ("Grouping", "▤"), ("Filtering", "⌕"), ("Editing", "✎"), ("Cell selection", "▧"), ("Conditional formatting", "◐"), ("Master-detail", "⊞"), ("Column bands", "▥"), ("Performance", "↗") })
         {
             var button = Button("scenario-" + name, glyph + "   " + name, () => ApplyScenario(name), false);
             button.HorizontalAlignment = HorizontalAlignment.Stretch; button.HorizontalContentAlignment = HorizontalAlignment.Left;
@@ -162,6 +177,9 @@ public sealed partial class MainPage : Page
         Toggle("Auto-filter row", true, value => DataGrid.ShowFilterRow = value);
         Toggle("Column bands", false, value => DataGrid.ShowBands = value);
         Toggle("Read-only", false, value => DataGrid.IsReadOnly = value);
+        var selectionMode = new ComboBox { ItemsSource = Enum.GetValues<GridSelectionMode>(), SelectedItem = GridSelectionMode.MultipleRows, HorizontalAlignment = HorizontalAlignment.Stretch };
+        selectionMode.SelectionChanged += (_, _) => { if (selectionMode.SelectedItem is GridSelectionMode mode) DataGrid.SelectionMode = mode; };
+        panel.Children.Add(new TextBlock { Text = "Selection mode", FontSize = 12 }); panel.Children.Add(selectionMode);
         Toggle("Compact rows", true, value => DataGrid.RowHeight = value ? 28 : 36);
         Toggle("Dark grid", false, value => { DataGrid.DarkTheme = value; });
         panel.Children.Add(new TextBlock { Text = "DATASET SIZE", FontSize = 10, CharacterSpacing = 70, Margin = new Thickness(0, 16, 0, 3), Foreground = Brush("#777777") });
@@ -180,6 +198,7 @@ public sealed partial class MainPage : Page
         _loading = true; Ready = false;
         try
         {
+            DataGrid.SelectionMode = GridSelectionMode.MultipleRows;
             DataGrid.Table = OrderData.Create(count); DataGrid.ColumnLayout!.SetPin("OrderID", ColumnPin.Left);
             DataGrid.ColumnLayout.SetPin("Status", ColumnPin.Right); DataGrid.ColumnLayout.SetVisible("Notes", false);
             DataGrid.Renderer.ConditionalFormats.Clear();
@@ -196,6 +215,7 @@ public sealed partial class MainPage : Page
         if (name == "Performance") { Reload(100000); Scenario = name; }
         DataGrid.ShowBands = name == "Column bands";
         DataGrid.IsReadOnly = false;
+        DataGrid.SelectionMode = name == "Cell selection" ? GridSelectionMode.Cells : GridSelectionMode.MultipleRows;
         var query = DefaultQuery();
         if (name == "Grouping") query = query with { Groups = [new("Region"), new("Status")] };
         if (name == "Filtering") query = query with { Filter = GridFilter.And(new FieldFilter("Total", FilterOperator.GreaterOrEqual, 5000m), new FieldFilter("Status", FilterOperator.NotEqual, "Cancelled")), Sorts = [new("Total", SortDirection.Descending)] };
@@ -264,7 +284,7 @@ public sealed partial class MainPage : Page
     }
     private async void RunValidation()
     {
-        try { var report = await DataGridScene.Validation.ValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
+        try { var report = await DataGridScene.Validation.ExtendedValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
         catch (Exception error) { SetMessage(error.Message); }
     }
     public void Export(string format)
@@ -281,7 +301,7 @@ public sealed partial class MainPage : Page
     {
         if (DataGrid.View is null) return;
         _subtitle.Text = $"{RecordCount:N0} orders · {Scenario} · virtualized rows and columns";
-        _status.Text = Message ?? DataGrid.LastError ?? $"{DataGrid.View.FilteredRecords.Count:N0} of {RecordCount:N0} records     |     {DataGrid.Selection.Count:N0} selected     |     Skia canvas · Uno Platform";
+        _status.Text = Message ?? DataGrid.LastError ?? $"{DataGrid.View.FilteredRecords.Count:N0} of {RecordCount:N0} records     |     {(DataGrid.SelectionMode == GridSelectionMode.Cells ? $"{DataGrid.Selection.SelectedCellCount:N0} cells" : $"{DataGrid.Selection.Count:N0} rows")} selected     |     Skia canvas · Uno Platform";
         _filterDescription.Text = DataGrid.View.Query.Filter is null && DataGrid.View.Query.Search.Length == 0 ? "No filter applied     ·     Right-click a column header for sorting, grouping and layout options" : $"Filter active   ·   {DataGrid.View.FilteredRecords.Count:N0} matching records   ·   Use Clear to remove filters";
         if (_actions.TryGetValue("undo", out var undo)) ((Button)undo).IsEnabled = DataGrid.History?.CanUndo == true;
         if (_actions.TryGetValue("redo", out var redo)) ((Button)redo).IsEnabled = DataGrid.History?.CanRedo == true;
