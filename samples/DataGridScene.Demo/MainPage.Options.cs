@@ -10,6 +10,9 @@ public sealed partial class MainPage
     private ComboBox? _selectionOptions;
     private ComboBox? _sizeOptions;
     private bool _syncingOptions;
+    private DataGridScene.Core.GridView? _observedSearchView;
+    private string _observedSearch = "";
+    private string _displayedScenario = "";
 
     private void RefreshOptions()
     {
@@ -36,13 +39,28 @@ public sealed partial class MainPage
                 int index = RecordCount switch { 1000 => 0, 10000 => 1, 100000 => 2, _ => -1 };
                 if (_sizeOptions.SelectedIndex != index) _sizeOptions.SelectedIndex = index;
             }
-            // Do not overwrite a pending search while its native editor owns focus.
-            if (!_searchTimer.IsEnabled && _search.FocusState == FocusState.Unfocused && _search.Text != DataGrid.View.Query.Search)
+            // Only an actual model query change (or a replacement view) may
+            // replace the toolbar text. A focus/selection notification can arrive
+            // before Uno dispatches the native input's TextChanged notification.
+            // Testing IsEnabled/FocusState here races that notification and loses
+            // freshly entered text. Unrelated grid state must never write it back.
+            var view = DataGrid.View;
+            if (!ReferenceEquals(_observedSearchView, view) || _observedSearch != view.Query.Search)
             {
+                _observedSearchView = view;
+                _observedSearch = view.Query.Search;
+                _searchTimer.Stop();
                 bool previous = _loading;
                 _loading = true;
-                try { _search.Text = DataGrid.View.Query.Search; }
+                try { if (_search.Text != _observedSearch) _search.Text = _observedSearch; }
                 finally { _loading = previous; }
+            }
+            if (_displayedScenario != Scenario)
+            {
+                _displayedScenario = Scenario;
+                foreach (var (name, element) in _actions)
+                    if (name.StartsWith("scenario-", StringComparison.Ordinal) && element is Button button)
+                        button.Background = name == "scenario-" + Scenario ? Brush("#e4eef7") : Brush("#f7f7f7");
             }
         }
         finally { _syncingOptions = false; }
