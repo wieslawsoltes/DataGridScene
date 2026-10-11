@@ -108,7 +108,7 @@ public sealed partial class GridSelection
             _selected.Clear(); _selected.Add(cell.RecordId); Anchor = FocusedCell = cell; Notify(); return;
         }
         string[]? fields = Mode == GridSelectionMode.Cells ? Order(view, columnOrder) : null;
-        if (fields is not null && !fields.Contains(cell.Field, StringComparison.OrdinalIgnoreCase))
+        if (fields is not null && !fields.Contains(cell.Field, StringComparer.OrdinalIgnoreCase))
             throw new ArgumentException("The focused column is not in the displayed column order.", nameof(cell));
         if (extend && Anchor is { } anchor)
         {
