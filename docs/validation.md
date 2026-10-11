@@ -2,7 +2,7 @@
 
 ## Reproducible layers
 
-The executable `tests/DataGridScene.Tests` runs `UpdateValidationSuite`, which includes the baseline and selection suites. Its 252 contracts cover schema, data shaping, editing, clipboard/export, paging, variable-height indexing, bands and workspace state. It writes `artifacts/core-validation.json` and exits nonzero on any failed assertion.
+The executable `tests/DataGridScene.Tests` runs `UpdateValidationSuite`, which includes the baseline and selection suites. Its 292 contracts cover schema, data shaping, editing, clipboard/export, paging, variable-height indexing, bands and workspace state. It writes `artifacts/core-validation.json` and exits nonzero on any failed assertion.
 
 The actual Uno WebAssembly application exposes the same suite through a sample-only diagnostic bridge. `tests/browser/run.mjs` invokes it in the browser runtime and also performs 32 interaction checks. `tests/browser/summaries.mjs` performs 20 summary, context-menu and staged-editor interaction checks. `tests/browser/workspace.mjs` performs 16 additional band/workspace checks. Real browser pointer, keyboard, clipboard and native text input are used; diagnostic commands supply fixtures/configuration and snapshots, not synthetic success results.
 
@@ -10,7 +10,9 @@ Clipboard tests first write an unrelated sentinel, issue Ctrl+C, and poll until 
 
 `tests/browser/performance.mjs` adds 11 live-update and bounded-work checks, including real cell edits, start/stop controls, wheel scrolling and a batch of 1,000 edits.
 
-`npm run test:browser` runs all four harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
+`tests/browser/review.mjs` adds eight checks for cached frames, edit preservation, read-only transitions and real control APIs. Its control-API check invokes ten individual Uno contracts; these instantiate the controls on the UI thread rather than simulating their behavior. The shared 292-contract suite also includes raster stack restoration and 22 bounded page-scheduling checks.
+
+`npm run test:browser` runs all five harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
 
 ## CI artifacts
 
@@ -34,6 +36,8 @@ A failed deployment verification does not undo publication; it marks the deploym
 ## Offline compiler check
 
 `scripts/validate-offline.py` can use the compiler/runtime kit produced by the repository's Offline validation kit workflow. It directly compiles the managed libraries, Uno controls and contract executable with the real .NET compiler and runs the tests. It is useful in disconnected environments, but does not run MSBuild targets, pack NuGet packages, compile the sample's generated platform code, or validate a browser. Full CI remains required.
+
+See the [review findings and additional benchmark comparison](review.md) for current limits, paging contracts and measured small-selection clipboard workloads.
 
 ## Performance measurements
 

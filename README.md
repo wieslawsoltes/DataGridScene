@@ -57,9 +57,11 @@ Select **Live updates** for a 100,000-row sample. Start/stop its synthetic feed,
 
 Display-only edits reuse shaped rows and geometry when validated dependencies prove that sorting, filtering and summaries are unaffected. `GridView.DeferRefresh()` and `GridControl.BeginDataUpdate()` coalesce related operations. Uniform row geometry uses constant-size storage, custom heights use adaptive sparse/dense indexes, and selected-cell counts are cached. Relevant shaping changes still use the complete refresh path. See [performance APIs, measurements and limits](docs/performance.md).
 
+Viewport frames and summary geometry are cached across display-only updates. The page cache separately bounds completed pages, pending requests and active fetches, and rejects mixed revisions. The correctness review also fixes rapid-click editing, untouched null/timestamp commits and visual-filter semantics. See [review findings, paging APIs and measured workloads](docs/review.md).
+
 ## Validation and deployment
 
-The shared C# suite currently contains **252 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace, 20 summary and 11 live-update/performance checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
+The shared C# suite currently contains **292 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace, 20 summary, 11 live-update/performance and 8 review checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The review harness also runs ten real Uno control API contracts. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
 
 CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell, opens the nested-band and group-summary samples, opens/cancels the summary editor, and verifies a display-only update on 100,000 rows without reshaping.
 
