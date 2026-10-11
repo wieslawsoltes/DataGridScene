@@ -21,7 +21,7 @@ public static class OrderData
         new("Quantity", typeof(int)) { Width = 86, AllowNull = false, Band = "Order", Validator = value => value is int quantity && quantity is >= 1 and <= 100000 ? null : "Quantity must be from 1 to 100,000." },
         new("UnitPrice", typeof(decimal), "Unit price") { Width = 112, Format = "C2", AllowNull = false, Band = "Order", Validator = value => value is decimal amount && amount >= 0 ? null : "Unit price must be nonnegative." },
         new("Discount", typeof(decimal)) { Width = 96, Format = "P0", AllowNull = false, Band = "Order", Validator = value => value is decimal discount && discount is >= 0 and <= 1 ? null : "Discount must be from 0 to 1." },
-        new("Total", typeof(decimal)) { Width = 138, Format = "C2", Band = "Order", ValueGetter = record => Math.Round((int)record[6]! * (decimal)record[7]! * (1m - (decimal)record[8]!), 2) },
+        new("Total", typeof(decimal)) { Width = 138, Format = "C2", Band = "Order", ValueDependencies = ["Quantity", "UnitPrice", "Discount"], ValueGetter = record => Math.Round((int)record[6]! * (decimal)record[7]! * (1m - (decimal)record[8]!), 2) },
         new("Progress", typeof(int), "Fulfilment") { Width = 120, Format = "0'%'", Presentation = ColumnPresentation.Progress, Band = "Delivery", Validator = value => value is int progress && progress is >= 0 and <= 100 ? null : "Fulfilment must be from 0 to 100." },
         new("Status", typeof(string)) { Width = 122, Choices = Statuses, Presentation = ColumnPresentation.Badge, Band = "Delivery" },
         new("Verified", typeof(bool)) { Width = 82, Band = "Delivery" },

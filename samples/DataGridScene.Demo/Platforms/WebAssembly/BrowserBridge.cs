@@ -21,7 +21,7 @@ public static partial class BrowserBridge
             ready = page.Ready, page.Scenario, page.RecordCount, filteredCount = view?.FilteredRecords.Count, viewRowCount = view?.Rows.Count,
             page.Message, grid.LastError, grid.IsEditing, grid.IsEditorReady, grid.EditorText, grid.EditingField, grid.EditingRecordId,
             selectionMode = grid.SelectionMode.ToString(), selectedCellCount = grid.Selection.SelectedCellCount,
-            focus = grid.Selection.FocusedCell, selectedIds = grid.Selection.SelectedIds.Take(100).ToArray(), selectedCount = grid.Selection.Count,
+            focus = grid.Selection.FocusedCell, selectedIds = grid.Selection.EnumerateSelectedIds().Take(100).ToArray(), selectedCount = grid.Selection.Count,
             canUndo = grid.History?.CanUndo, canRedo = grid.History?.CanRedo,
             grid.HorizontalOffset, grid.VerticalOffset, grid.RowHeight, grid.ShowBands, grid.DarkTheme,
             groupFooterCount = view?.Query.GroupFooterDisplay != GroupFooterDisplayMode.Hidden ? view?.Rows.Count(row => row.Kind == GridRowKind.GroupFooter) : 0,
@@ -42,6 +42,10 @@ public static partial class BrowserBridge
                     bounds = frame.RowBounds(index), cells = frame.Columns.Slots.ToDictionary(column => column.Field, column => frame.CellBounds(index, column.Field))
                 }).ToArray()
             },
+            performance = new { view?.RefreshCount, view?.ValueUpdateCount, view?.RowsRevision, view?.LastRefreshMilliseconds,
+                grid.RowGeometryBuildCount, heightRevision = grid.HeightIndex.Revision, heightResets = grid.HeightIndex.ResetCount,
+                heightMode = grid.HeightIndex.StorageMode.ToString(), heightEntries = grid.HeightIndex.StorageEntryCount,
+                page.LiveUpdatesRunning, page.LiveTick, page.ControlEvents },
             rendering = new { grid.Renderer.SummaryCellsDrawn, grid.Renderer.CellsDrawn, grid.Renderer.RowsDrawn, grid.Renderer.DrawCount, grid.Renderer.CachedTextRuns, grid.Renderer.LastDrawMilliseconds, grid.Renderer.FontFamily },
             summaryActions = grid.SummaryActionBounds(page),
             buttons = page.ActionBounds(), options = page.OptionValues()
@@ -81,6 +85,15 @@ public static partial class BrowserBridge
                 case "band-pin": grid.ColumnLayout!.SetBandPin(Text("key"), Enum.Parse<ColumnPin>(Text("pin"))); break;
                 case "band-visible": grid.ColumnLayout!.SetBandVisible(Text("key"), input.GetProperty("value").GetBoolean()); break;
                 case "row-height": grid.SetRowHeight(Text("key"), input.GetProperty("height").GetDouble()); break;
+                case "clear-row-height": grid.ClearRowHeight(Text("key")); break;
+                case "batch-query":
+                    using (grid.BeginDataUpdate())
+                    {
+                        grid.SetSearch("Alpine");
+                        grid.SortColumn("Quantity", SortDirection.Descending);
+                        grid.GroupColumn("Region");
+                    }
+                    break;
                 case "restore": grid.RestoreLayout(Text("value")); break;
                 case "layout": return JsonSerializer.Serialize(new { ok = true, layout = grid.SaveLayout() }, Json);
                 case "export": page.Export(Text("format")); break;
@@ -92,5 +105,5 @@ public static partial class BrowserBridge
         catch (Exception error) { return JsonSerializer.Serialize(new { ok = false, error = error.Message }, Json); }
     }
     [JSExport]
-    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.SummaryValidationSuite.RunAsync(), Json);
+    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.UpdateValidationSuite.RunAsync(), Json);
 }

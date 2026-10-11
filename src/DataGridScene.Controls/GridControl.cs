@@ -18,7 +18,15 @@ public sealed partial class GridControl : UserControl, IDisposable
 {
     public static readonly DependencyProperty TableProperty = DependencyProperty.Register(nameof(Table), typeof(GridTable), typeof(GridControl),
         new PropertyMetadata(null, (owner, args) => ((GridControl)owner).Attach((GridTable?)args.NewValue)));
-    public GridTable? Table { get => (GridTable?)GetValue(TableProperty); set => SetValue(TableProperty, value); }
+    public GridTable? Table
+    {
+        get => (GridTable?)GetValue(TableProperty);
+        set
+        {
+            if (_dataUpdateDepth > 0) throw new InvalidOperationException("Finish batched updates before replacing the table.");
+            SetValue(TableProperty, value);
+        }
+    }
     private readonly Grid _root = new();
     private readonly GridSurface _surface;
     private readonly Canvas _overlay = new();
@@ -112,7 +120,17 @@ public sealed partial class GridControl : UserControl, IDisposable
         }
         RebuildRows();
     }
-    private void ViewChanged(object? sender, EventArgs args) { if (Table is not null) Selection.Prune(Table); RebuildRows(); }
+    private void ViewChanged(object? sender, EventArgs args)
+    {
+        if (View?.LastChangeKind == GridViewChangeKind.Values)
+        {
+            // Records retain their identities and positions; only painting and the focused
+            // accessibility description change. Do not rebuild an N-row height index.
+            SelectionChanged(sender, args); return;
+        }
+        if (Table is not null) Selection.Prune(Table);
+        RebuildRows();
+    }
     private void LayoutChanged(object? sender, EventArgs args) => UpdateGeometry();
     private void HistoryChanged(object? sender, EventArgs args) => Changed();
     private void SelectionChanged(object? sender, EventArgs args)
@@ -124,26 +142,63 @@ public sealed partial class GridControl : UserControl, IDisposable
         }
         Redraw(); Changed();
     }
+    public long RowGeometryBuildCount { get; private set; }
+    private double EffectiveRowHeight(GridRowKind kind, double? custom = null)
+    {
+        double minimum = kind == GridRowKind.Detail ? 128 : SummaryGeometry.RowHeight(View!.Query, kind, RowHeight);
+        return kind is GridRowKind.Group or GridRowKind.GroupFooter ? Math.Max(custom ?? minimum, minimum) : custom ?? minimum;
+    }
     private void RebuildRows()
     {
+        if (_dataUpdateDepth > 0) { _geometryPending = true; return; }
+        RowGeometryBuildCount++;
         HeightIndex.Reset(View?.Rows.Count ?? 0, _metrics.RowHeight);
-        if (View is not null)
-            for (int i = 0; i < View.Rows.Count; i++)
-            {
-                var row = View.Rows[i];
-                double height = _rowHeights.TryGetValue(row.Key, out var custom) ? custom : row.Kind == GridRowKind.Detail ? 128 : SummaryGeometry.RowHeight(View.Query, row.Kind, RowHeight);
-                if (row.Kind is GridRowKind.Group or GridRowKind.GroupFooter) height = Math.Max(height, SummaryGeometry.RowHeight(View.Query, row.Kind, RowHeight));
-                if (height != RowHeight) HeightIndex.SetHeight(i, height);
-            }
+        if (View is not null && (View.HasNonDataRows || _rowHeights.Count > 0))
+        {
+            // Resolve summary line counts once per kind, not once per group row.
+            double groupHeight = EffectiveRowHeight(GridRowKind.Group);
+            double footerHeight = EffectiveRowHeight(GridRowKind.GroupFooter);
+            if (View.HasNonDataRows)
+                for (int i = 0; i < View.Rows.Count; i++)
+                {
+                    var row = View.Rows[i];
+                    double minimum = row.Kind == GridRowKind.Detail ? 128 : row.Kind == GridRowKind.Group ? groupHeight : row.Kind == GridRowKind.GroupFooter ? footerHeight : RowHeight;
+                    double height = _rowHeights.GetValueOrDefault(row.Key, minimum);
+                    if (row.Group is not null) height = Math.Max(height, minimum);
+                    if (height != RowHeight) HeightIndex.SetHeight(i, height);
+                }
+            else
+                foreach (var (key, height) in _rowHeights)
+                {
+                    int index = View.IndexOfRow(key);
+                    if (index >= 0) HeightIndex.SetHeight(index, height);
+                }
+        }
         UpdateGeometry(); Changed();
     }
     public void SetRowHeight(string rowKey, double height)
     {
+        ArgumentException.ThrowIfNullOrEmpty(rowKey);
         if (!double.IsFinite(height) || height < 18 || height > 4096) throw new ArgumentOutOfRangeException(nameof(height));
-        _rowHeights[rowKey] = height; RebuildRows();
+        _rowHeights[rowKey] = height;
+        UpdateRowHeight(rowKey);
+    }
+    public bool ClearRowHeight(string rowKey)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(rowKey);
+        if (!_rowHeights.Remove(rowKey)) return false;
+        UpdateRowHeight(rowKey); return true;
+    }
+    private void UpdateRowHeight(string key)
+    {
+        if (_dataUpdateDepth > 0) { _geometryPending = true; return; }
+        int index = View?.IndexOfRow(key) ?? -1;
+        if (index >= 0) HeightIndex.SetHeight(index, EffectiveRowHeight(View!.Rows[index].Kind, _rowHeights.TryGetValue(key, out var custom) ? custom : null));
+        UpdateGeometry(); Changed();
     }
     private void UpdateGeometry()
     {
+        if (_dataUpdateDepth > 0) { _geometryPending = true; return; }
         if (View is null || ColumnLayout is null) { Frame = null; Redraw(); return; }
         Frame = new(View, ColumnLayout, Selection, HeightIndex, _metrics, _surface.ActualWidth, _surface.ActualHeight, _offsetX, _offsetY);
         _offsetX = Frame.Columns.Offset; _offsetY = Frame.OffsetY;
@@ -158,8 +213,17 @@ public sealed partial class GridControl : UserControl, IDisposable
         finally { _updatingScroll = false; }
         PositionEditor(); Redraw();
     }
-    public void Redraw() { if (!_disposed) _surface.Invalidate(); }
-    private void Changed() => StateChanged?.Invoke(this, EventArgs.Empty);
+    public void Redraw()
+    {
+        if (_disposed) return;
+        if (_dataUpdateDepth > 0) { _redrawPending = true; return; }
+        _surface.Invalidate();
+    }
+    private void Changed()
+    {
+        if (_dataUpdateDepth > 0) { _statePending = true; return; }
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
     public void ScrollTo(double x, double y)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y)) throw new ArgumentOutOfRangeException(nameof(x));
@@ -198,13 +262,13 @@ public sealed partial class GridControl : UserControl, IDisposable
     public void SetQuery(GridQuery query)
     {
         RequireView(); if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
-        View!.SetQuery(query); _criteria = View.Query.Filter; _filterTexts.Clear(); Renderer.FilterTexts = _filterTexts;
+        View!.SetQuery(query); _criteria = View.RequestedQuery.Filter; _filterTexts.Clear(); Renderer.FilterTexts = _filterTexts;
         _offsetY = 0; UpdateGeometry(); ClearError();
     }
     public void SetSearch(string search)
     {
         RequireView(); if (!CommitEdit()) return;
-        View!.SetQuery(View.Query with { Search = search }); _offsetY = 0; UpdateGeometry(); ClearError();
+        View!.SetQuery(View.RequestedQuery with { Search = search }); _offsetY = 0; UpdateGeometry(); ClearError();
     }
     public void SetCriteria(string expression)
     {
@@ -225,32 +289,32 @@ public sealed partial class GridControl : UserControl, IDisposable
         var terms = new List<GridFilter>();
         if (criteria is not null) terms.Add(criteria);
         foreach (var pair in texts) if (CriteriaParser.AutoFilter(pair.Key, pair.Value) is { } filter) terms.Add(filter);
-        View!.SetQuery(View.Query with { Filter = terms.Count == 0 ? null : GridFilter.And(terms.ToArray()) });
+        View!.SetQuery(View.RequestedQuery with { Filter = terms.Count == 0 ? null : GridFilter.And(terms.ToArray()) });
         _offsetY = 0; UpdateGeometry();
     }
     public void ClearFilters()
     {
         RequireView(); if (!CommitEdit()) return;
-        View!.SetQuery(View.Query with { Filter = null, Search = "" }); _criteria = null; _filterTexts.Clear(); Renderer.FilterTexts = _filterTexts; _offsetY = 0; ClearError(); UpdateGeometry();
+        View!.SetQuery(View.RequestedQuery with { Filter = null, Search = "" }); _criteria = null; _filterTexts.Clear(); Renderer.FilterTexts = _filterTexts; _offsetY = 0; ClearError(); UpdateGeometry();
     }
     public void SortColumn(string field, SortDirection? direction, bool append = false)
     {
         RequireView(); if (!CommitEdit()) return;
-        var sorts = append ? View!.Query.Sorts.Where(sort => !sort.Field.Equals(field, StringComparison.OrdinalIgnoreCase)).ToList() : [];
+        var sorts = append ? View!.RequestedQuery.Sorts.Where(sort => !sort.Field.Equals(field, StringComparison.OrdinalIgnoreCase)).ToList() : [];
         if (direction is not null) sorts.Add(new(field, direction.Value));
-        View!.SetQuery(View.Query with { Sorts = sorts }); ClearError();
+        View!.SetQuery(View.RequestedQuery with { Sorts = sorts }); ClearError();
     }
     private void CycleSort(string field, bool append)
     {
-        var existing = View!.Query.Sorts.FirstOrDefault(sort => sort.Field.Equals(field, StringComparison.OrdinalIgnoreCase));
+        var existing = View!.RequestedQuery.Sorts.FirstOrDefault(sort => sort.Field.Equals(field, StringComparison.OrdinalIgnoreCase));
         SortColumn(field, existing is null ? SortDirection.Ascending : existing.Direction == SortDirection.Ascending ? SortDirection.Descending : null, append);
     }
     public void GroupColumn(string field, bool grouped = true)
     {
         RequireView(); if (!CommitEdit()) return;
-        var groups = View!.Query.Groups.Where(group => !group.Field.Equals(field, StringComparison.OrdinalIgnoreCase)).ToList();
+        var groups = View!.RequestedQuery.Groups.Where(group => !group.Field.Equals(field, StringComparison.OrdinalIgnoreCase)).ToList();
         if (grouped) groups.Add(new(field));
-        View.SetQuery(View.Query with { Groups = groups, GroupSummarySorts = View.Query.GroupSummarySorts.Where(sort => groups.Any(group => group.Field.Equals(sort.Field, StringComparison.OrdinalIgnoreCase))).ToArray() }); _offsetY = 0; UpdateGeometry();
+        View.SetQuery(View.RequestedQuery with { Groups = groups, GroupSummarySorts = View.RequestedQuery.GroupSummarySorts.Where(sort => groups.Any(group => group.Field.Equals(sort.Field, StringComparison.OrdinalIgnoreCase))).ToArray() }); _offsetY = 0; UpdateGeometry();
     }
     public void BestFit(string? field = null)
     {
@@ -270,10 +334,11 @@ public sealed partial class GridControl : UserControl, IDisposable
     public string SaveLayout(bool includeSelection = true)
     {
         RequireView();
+        if (_dataUpdateDepth > 0) throw new InvalidOperationException("Finish data updates before saving a workspace.");
         if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
         return LayoutSerializer.Save(new GridLayoutDocument
         {
-            Columns = ColumnLayout!.Columns, Query = View!.Query with { Filter = _criteria },
+            Columns = ColumnLayout!.Columns, Query = View!.RequestedQuery with { Filter = _criteria },
             FilterTexts = new Dictionary<string, string>(_filterTexts, StringComparer.OrdinalIgnoreCase),
             RowHeight = RowHeight, ShowFilterRow = ShowFilterRow, ShowGroupPanel = ShowGroupPanel,
             ShowBands = ShowBands, Theme = DarkTheme ? "Dark" : "Light", SelectionMode = SelectionMode,
@@ -287,6 +352,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     {
         RequireView();
         if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
+        if (_dataUpdateDepth > 0) throw new InvalidOperationException("Finish data updates before restoring a workspace.");
         var document = LayoutSerializer.Load(json, Table!.Schema);
         var nextLayout = new GridLayout(Table.Schema);
         nextLayout.RestoreColumns(document.Columns);
