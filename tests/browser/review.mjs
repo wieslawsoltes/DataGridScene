@@ -50,6 +50,12 @@ try {
   await page.goto(process.env.APP_URL ?? 'http://127.0.0.1:4173/DataGridScene/', { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForFunction(() => globalThis.dataGridScene?.ready, undefined, { timeout: 180000 });
   await waitFor(state => state.ready && state.rendering.drawCount > 0, 60000);
+  await test('review.real-uno-control-contracts', async () => {
+    const result = await command('validate-controls');
+    await writeFile(path.join(output, 'uno-control-contracts.json'), JSON.stringify(result.report, null, 2));
+    assert.equal(result.report.passed, true, result.report.results.filter(r => !r.passed).map(r => r.name + ': ' + r.error).join('\n'));
+    assert.equal(result.report.results.length, 10);
+  });
   await test('review.repeated-paint-reuses-frame-and-summaries', async () => {
     await reset(); await command('redraw'); const before = await snapshot();
     for (let index = 0; index < 5; index++) {

@@ -60,6 +60,7 @@ public static partial class BrowserBridge
             string Text(string key) => input.GetProperty(key).GetString() ?? "";
             switch (name)
             {
+                case "validate-controls": return JsonSerializer.Serialize(new { ok = true, report = ControlReviewChecks.Run() }, Json);
                 // Fixture/configuration commands do not simulate user edits or successful assertions.
                 case "fixture-value": grid.Table!.Apply([new(input.GetProperty("id").GetInt64(), Text("field"), input.GetProperty("value").Clone())]); break;
                 case "readonly": grid.IsReadOnly = input.GetProperty("value").GetBoolean(); break;

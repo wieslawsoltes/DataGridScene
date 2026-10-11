@@ -13,13 +13,28 @@ public sealed class FilterBuilder : UserControl
     private readonly GroupEditor _root;
     public FilterBuilder(GridSchema schema, GridFilter? filter = null)
     {
+        ArgumentNullException.ThrowIfNull(schema);
         _schema = schema;
+        filter = QuerySnapshot.Capture(new() { Filter = filter }, schema).Filter;
+        ValidateEditable(filter);
         _root = new GroupEditor(this, filter is FilterGroup group ? group : new FilterGroup(true, filter is null ? [] : [filter]), 0);
         Content = new ScrollViewer { Content = _root.Root, MaxHeight = 480, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
     public GridFilter? BuildFilter()
     {
-        GridFilter? filter = _root.Build(); filter?.Compile(_schema); return filter;
+        GridFilter? filter = _root.Build();
+        if (filter is FilterGroup { All: true, Children.Count: 0 }) return null;
+        return QuerySnapshot.Capture(new() { Filter = filter }, _schema).Filter;
+    }
+    private static void ValidateEditable(GridFilter? filter)
+    {
+        switch (filter)
+        {
+            case null or FieldFilter: return;
+            case FilterGroup group: foreach (var child in group.Children) ValidateEditable(child); return;
+            case NotFilter not: ValidateEditable(not.Child); return;
+            default: throw new NotSupportedException("The visual builder cannot edit this application-defined filter. It has not been removed or changed.");
+        }
     }
     private interface IEditor { UIElement Root { get; } GridFilter? Build(); }
     private sealed class GroupEditor : IEditor
@@ -60,13 +75,14 @@ public sealed class FilterBuilder : UserControl
         public GridFilter? Build()
         {
             var conditions = _editors.Select(editor => editor.Build()).OfType<GridFilter>().ToArray();
-            if (conditions.Length == 0) return null;
             GridFilter result = new FilterGroup(_operation.SelectedIndex == 0, conditions);
             return _not.IsChecked == true ? new NotFilter(result) : result;
         }
     }
     private sealed class ConditionEditor : IEditor
     {
+        private readonly FieldFilter _initial;
+        private readonly string _initialValue, _initialUpper;
         private readonly ComboBox _field;
         private readonly ComboBox _operator;
         private readonly TextBox _value = new() { MinWidth = 140, PlaceholderText = "Value" };
@@ -74,10 +90,28 @@ public sealed class FilterBuilder : UserControl
         public UIElement Root { get; }
         public ConditionEditor(FilterBuilder owner, FieldFilter filter)
         {
+            var column = owner._schema[filter.Field];
+            _initial = filter = filter with { Field = column.Field };
+            string Display(object? value, bool text = false)
+            {
+                if (text) return Convert.ToString(GridValue.Unwrap(value), owner._schema.Culture) ?? "";
+                // Schema-directed conversion avoids the decimal-first untyped JSON path.
+                if (!column.TryConvert(value, owner._schema.Culture, out var converted, out var error, validate: false))
+                    throw new FormatException(error);
+                return converted switch
+                {
+                    DateTime date => date.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                    DateTimeOffset date => date.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                    _ => Convert.ToString(converted, owner._schema.Culture) ?? ""
+                };
+            }
             _field = new() { ItemsSource = owner._schema.Columns.Select(column => column.Field).ToArray(), SelectedItem = filter.Field, MinWidth = 140 };
             _operator = new() { ItemsSource = Enum.GetValues<FilterOperator>(), SelectedItem = filter.Operator, MinWidth = 150 };
-            _value.Text = filter.Operator == FilterOperator.In ? string.Join(",", (filter.Values ?? []).Select(value => DelimitedText.Escape(Convert.ToString(GridValue.Unwrap(value), owner._schema.Culture) ?? ""))) : Convert.ToString(GridValue.Unwrap(filter.Value), owner._schema.Culture) ?? "";
-            _upper.Text = Convert.ToString(GridValue.Unwrap(filter.Upper), owner._schema.Culture) ?? "";
+            _initialValue = _value.Text = filter.Operator == FilterOperator.In
+                ? string.Join(",", (filter.Values ?? []).Select(value => DelimitedText.Escape(Display(value))))
+                : filter.Operator is FilterOperator.IsNull or FilterOperator.IsNotNull ? ""
+                : Display(filter.Value, filter.Operator is FilterOperator.Contains or FilterOperator.StartsWith or FilterOperator.EndsWith);
+            _initialUpper = _upper.Text = filter.Operator == FilterOperator.Between ? Display(filter.Upper) : "";
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 }; row.Children.Add(_field); row.Children.Add(_operator); row.Children.Add(_value); row.Children.Add(_upper); Root = row;
             _operator.SelectionChanged += (_, _) => Update(); Update();
         }
@@ -92,8 +126,14 @@ public sealed class FilterBuilder : UserControl
         {
             string field = (string?)_field.SelectedItem ?? throw new FormatException("Choose a field.");
             var operation = (FilterOperator)(_operator.SelectedItem ?? FilterOperator.Equal);
-            IReadOnlyList<object?>? values = operation == FilterOperator.In ? DelimitedText.Parse(_value.Text).SelectMany(row => row).Cast<object?>().ToArray() : null;
-            return new FieldFilter(field, operation, _value.Text, _upper.Text, values);
+            bool sameField = field == _initial.Field;
+            bool sameValue = sameField && _value.Text == _initialValue;
+            IReadOnlyList<object?>? values = operation == FilterOperator.In
+                ? sameValue && _initial.Operator == FilterOperator.In ? _initial.Values
+                    : DelimitedText.Parse(_value.Text).SelectMany(row => row).Cast<object?>().ToArray() : null;
+            // Untouched editors retain nulls and exact typed values, not their display strings.
+            return new FieldFilter(field, operation, sameValue && _initial.Operator is not (FilterOperator.In or FilterOperator.IsNull or FilterOperator.IsNotNull) ? _initial.Value : _value.Text,
+                sameField && _upper.Text == _initialUpper ? _initial.Upper : _upper.Text, values);
         }
     }
 }
