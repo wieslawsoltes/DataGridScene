@@ -19,7 +19,7 @@ public static partial class BrowserBridge
         return JsonSerializer.Serialize(new
         {
             chrome = page.ChromeSnapshot(),
-            filterPanel = new { visible = grid.FilterPanel.Visibility == Visibility.Visible, grid.FilterPanel.Items, grid.FilterPanel.IsFilterEnabled, grid.FilterPanel.ContentBuildCount },
+            filterPanel = new { visible = grid.FilterPanel.Visibility == Visibility.Visible, items = grid.FilterPanel.Items.Select(item => new { item.Key, item.Caption, item.Description }).ToArray(), grid.FilterPanel.IsFilterEnabled, grid.FilterPanel.ContentBuildCount },
             ready = page.Ready, page.Scenario, page.RecordCount, filteredCount = view?.FilteredRecords.Count, viewRowCount = view?.Rows.Count,
             page.Message, grid.LastError, grid.IsEditing, grid.IsEditorReady, grid.EditorText, grid.EditingField, grid.EditingRecordId,
             selectionMode = grid.SelectionMode.ToString(), selectedCellCount = grid.Selection.SelectedCellCount,
