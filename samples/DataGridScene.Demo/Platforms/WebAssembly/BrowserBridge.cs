@@ -33,7 +33,7 @@ public static partial class BrowserBridge
             origin = new { origin.X, origin.Y },
             frame = frame is null ? null : new
             {
-                frame.Width, frame.Height, frame.HeaderTop, frame.FilterTop, frame.BodyTop, frame.FooterTop,
+                frame.Width, frame.Height, frame.HeaderTop, frame.FilterTop, frame.BodyTop, frame.FooterTop, frame.SummaryGeometryBuildCount,
                 summaryCells = SummaryGeometry.VisibleCells(frame).ToArray(),
                 columns = frame.Columns.Slots, groups = frame.GroupChips, bands = frame.Bands, bandLevels = grid.ColumnLayout!.BandLevels,
                 rows = Enumerable.Range(frame.VisibleRows.Start, frame.VisibleRows.Count).Select(index => new
@@ -43,7 +43,7 @@ public static partial class BrowserBridge
                 }).ToArray()
             },
             performance = new { view?.RefreshCount, view?.ValueUpdateCount, view?.RowsRevision, view?.LastRefreshMilliseconds,
-                grid.RowGeometryBuildCount, heightRevision = grid.HeightIndex.Revision, heightResets = grid.HeightIndex.ResetCount,
+                grid.FrameBuildCount, grid.FrameReuseCount, grid.RowGeometryBuildCount, heightRevision = grid.HeightIndex.Revision, heightResets = grid.HeightIndex.ResetCount,
                 heightMode = grid.HeightIndex.StorageMode.ToString(), heightEntries = grid.HeightIndex.StorageEntryCount,
                 page.LiveUpdatesRunning, page.LiveTick, page.ControlEvents },
             rendering = new { grid.Renderer.SummaryCellsDrawn, grid.Renderer.CellsDrawn, grid.Renderer.RowsDrawn, grid.Renderer.DrawCount, grid.Renderer.CachedTextRuns, grid.Renderer.LastDrawMilliseconds, grid.Renderer.FontFamily },
@@ -60,6 +60,10 @@ public static partial class BrowserBridge
             string Text(string key) => input.GetProperty(key).GetString() ?? "";
             switch (name)
             {
+                // Fixture/configuration commands do not simulate user edits or successful assertions.
+                case "fixture-value": grid.Table!.Apply([new(input.GetProperty("id").GetInt64(), Text("field"), input.GetProperty("value").Clone())]); break;
+                case "readonly": grid.IsReadOnly = input.GetProperty("value").GetBoolean(); break;
+                case "redraw": grid.Redraw(); break;
                 case "reset": page.Reload(input.TryGetProperty("count", out var count) ? count.GetInt32() : 10000); break;
                 case "scenario": page.ApplyScenario(Text("name")); break;
                 case "focus-grid": grid.Focus(FocusState.Programmatic); break;

@@ -33,13 +33,13 @@ projects = [
     ('src', 'Core', []), ('src', 'Data', ['Core']), ('src', 'Layout', ['Core']),
     ('src', 'Export', ['Core']), ('src', 'Rendering.Skia', ['Core', 'Layout']),
     ('src', 'Controls', ['Core', 'Layout', 'Export', 'Rendering.Skia']),
-    ('tests', 'Validation', ['Core', 'Data', 'Layout', 'Export']),
+    ('tests', 'Validation', ['Core', 'Data', 'Layout', 'Export', 'Rendering.Skia']),
     ('tests', 'Tests', ['Core', 'Data', 'Layout', 'Export', 'Validation'])]
 for folder, name, dependencies in projects:
     source = root / folder / ('DataGridScene.' + name)
     files = sorted(file for file in source.glob('*.cs'))
     # User controls have no XAML/source-generated implementation in this project.
-    more_refs = external if name in ('Rendering.Skia', 'Controls') else []
+    more_refs = external if name in ('Rendering.Skia', 'Controls', 'Validation') else []
     parameters = ['-nologo', '-noconfig', '-nostdlib+', '-langversion:preview', '-nullable:enable',
                   '-unsafe+', '-deterministic+', '-debug:portable', '-optimize+',
                   '-target:' + ('exe' if name == 'Tests' else 'library'),
@@ -52,5 +52,7 @@ for folder, name, dependencies in projects:
     subprocess.run([str(kit/'dotnet'), str(kit/'compiler/csc.dll'), *parameters], check=True, cwd=root, env=env)
 (out / 'DataGridScene.Tests.runtimeconfig.json').write_text(json.dumps({'runtimeOptions': {
     'tfm': 'net10.0', 'framework': {'name': 'Microsoft.NETCore.App', 'version': '10.0.0'}}}))
-print('RUN managed source conformance', flush=True)
+for name in ('SkiaSharp.dll', 'SkiaSharp.HarfBuzz.dll', 'HarfBuzzSharp.dll', 'libSkiaSharp.so', 'libHarfBuzzSharp.so'):
+    shutil.copy2(kit / 'deps' / name, out / name)
+print('RUN managed and raster source conformance', flush=True)
 subprocess.run([str(kit/'dotnet'), str(out/'DataGridScene.Tests.dll')], check=True, cwd=root, env=env)

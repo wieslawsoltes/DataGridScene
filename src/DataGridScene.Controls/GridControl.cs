@@ -47,6 +47,9 @@ public sealed partial class GridControl : UserControl, IDisposable
     public RowHeightIndex HeightIndex { get; } = new();
     public GridCanvasRenderer Renderer { get; } = new();
     public GridFrame? Frame { get; private set; }
+    private readonly GridFrameCache _frameCache = new();
+    public long FrameBuildCount => _frameCache.BuildCount;
+    public long FrameReuseCount => _frameCache.ReuseCount;
     public GridMetrics Metrics => _metrics;
     public bool IsReadOnly { get; set; }
     public string? LastError { get; private set; }
@@ -98,8 +101,8 @@ public sealed partial class GridControl : UserControl, IDisposable
     {
         protected override void RenderOverride(SKCanvas canvas, Size area)
         {
-            if (owner.View is null || owner.ColumnLayout is null) return;
-            owner.Frame = new(owner.View, owner.ColumnLayout, owner.Selection, owner.HeightIndex, owner._metrics, area.Width, area.Height, owner._offsetX, owner._offsetY);
+            if (owner._disposed || owner.View is null || owner.ColumnLayout is null) return;
+            owner.Frame = owner._frameCache.Get(owner.View, owner.ColumnLayout, owner.Selection, owner.HeightIndex, owner._metrics, area.Width, area.Height, owner._offsetX, owner._offsetY);
             owner.Renderer.Draw(canvas, owner.Frame);
         }
     }
@@ -199,8 +202,9 @@ public sealed partial class GridControl : UserControl, IDisposable
     private void UpdateGeometry()
     {
         if (_dataUpdateDepth > 0) { _geometryPending = true; return; }
-        if (View is null || ColumnLayout is null) { Frame = null; Redraw(); return; }
-        Frame = new(View, ColumnLayout, Selection, HeightIndex, _metrics, _surface.ActualWidth, _surface.ActualHeight, _offsetX, _offsetY);
+        if (_disposed) return;
+        if (View is null || ColumnLayout is null) { Frame = null; _frameCache.Clear(); Redraw(); return; }
+        Frame = _frameCache.Get(View, ColumnLayout, Selection, HeightIndex, _metrics, _surface.ActualWidth, _surface.ActualHeight, _offsetX, _offsetY);
         _offsetX = Frame.Columns.Offset; _offsetY = Frame.OffsetY;
         _updatingScroll = true;
         try
@@ -401,6 +405,6 @@ public sealed partial class GridControl : UserControl, IDisposable
         if (View is not null) { View.Changed -= ViewChanged; View.Dispose(); }
         if (ColumnLayout is not null) ColumnLayout.Changed -= LayoutChanged;
         if (History is not null) History.Changed -= HistoryChanged;
-        Selection.Changed -= SelectionChanged; Renderer.Dispose();
+        Selection.Changed -= SelectionChanged; Frame = null; _frameCache.Clear(); Renderer.Dispose();
     }
 }

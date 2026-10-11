@@ -19,6 +19,7 @@ public sealed partial class GridControl
     private long _editRecordId;
     private bool _filterEditor;
     private bool _committing;
+    private object? _initialEditorValue;
     public bool IsEditing => _editor is not null;
     public bool IsEditorReady => _editor is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } && _editor.FocusState != FocusState.Unfocused;
     public string? EditorText => _editor is TextBox text ? text.Text : _editor is ComboBox combo ? Convert.ToString(combo.SelectedItem) : null;
@@ -40,7 +41,7 @@ public sealed partial class GridControl
         {
             string value = column.GetValue(record) switch
             {
-                DateTime date => date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                DateTime date => date.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
                 DateTimeOffset date => date.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
                 var data => Convert.ToString(data, Table.Schema.Culture) ?? ""
             };
@@ -55,8 +56,10 @@ public sealed partial class GridControl
         _editor = new TextBox { Text = _filterTexts.GetValueOrDefault(field) ?? "", PlaceholderText = "Filter…", Padding = new Thickness(6, 2, 6, 2), MinHeight = 0, MinWidth = 0, FontSize = 13 };
         ShowEditor("Filter " + Table!.Schema[field].Caption);
     }
+    private object? EditorValue() => _editor switch { TextBox text => text.Text, ComboBox combo => combo.SelectedItem, _ => null };
     private void ShowEditor(string label)
     {
+        _initialEditorValue = EditorValue();
         _editorBorder = new Border { Child = _editor, BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue) };
         // Focus before a TextBox is loaded does not create Uno's browser input host.
         // Reapply it on Loaded so IME, insertText and paste reach the real editor.
@@ -93,7 +96,14 @@ public sealed partial class GridControl
         _committing = true;
         try
         {
-            object? value = _editor switch { TextBox text => text.Text, ComboBox combo => combo.SelectedItem, _ => null };
+            object? value = EditorValue();
+            if (!_filterEditor && Equals(value, _initialEditorValue))
+            {
+                // An untouched null/scalar editor is not a request to normalize or
+                // replace the stored value. Preserve nulls, precision and versions.
+                _transaction?.Cancel(); CloseEditor(); ClearError(); return true;
+            }
+            if (!_filterEditor && IsReadOnly) throw new InvalidOperationException("This grid is read-only.");
             if (_filterEditor) SetColumnFilter(_editField!, Convert.ToString(value) ?? "");
             else { _transaction!.Set(_editField!, value); _transaction.Commit(); }
             CloseEditor(); ClearError(); return true;
@@ -111,7 +121,7 @@ public sealed partial class GridControl
     {
         if (_editor is not null) { _editor.KeyDown -= EditorKeyDown; _editor.Loaded -= EditorLoaded; }
         if (_editorBorder is not null) { _overlay.Children.Remove(_editorBorder); _editorBorder.Child = null; }
-        _editor = null; _editorBorder = null; _transaction = null; _editField = null; _filterEditor = false;
+        _editor = null; _editorBorder = null; _transaction = null; _editField = null; _filterEditor = false; _initialEditorValue = null;
         Redraw(); Changed();
     }
     private void EditorKeyDown(object sender, KeyRoutedEventArgs args)

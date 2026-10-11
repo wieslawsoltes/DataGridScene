@@ -1,4 +1,5 @@
 using DataGridScene.Core;
+using DataGridScene.Export;
 using DataGridScene.Layout;
 using System.Diagnostics;
 
@@ -45,6 +46,11 @@ public static class PerformanceBenchmarks
         using var computedView = new GridView(computed); computedView.SetQuery(new() { Sorts = [new("Total", SortDirection.Descending)] });
         int quantity = 1;
         Measure("reshape-100000-computed-sorted-rows", 3, () => { computed.Apply([new(0, "Quantity", ++quantity)]); _sink = computedView.Rows.Count; });
+        var copied = new GridSelection(); copied.Select(view, new(99999, "Note"));
+        string[] fields = ["Note", "Amount"];
+        Measure("copy-one-selected-row-from-100000", 50, () => _sink = GridClipboard.Copy(view, copied, fields).Length);
+        copied.Mode = GridSelectionMode.Cells; copied.Select(view, new(99999, "Note"));
+        Measure("copy-one-selected-cell-from-100000", 50, () => _sink = GridClipboard.Copy(view, copied, fields).Length);
         return samples.AsReadOnly();
     }
 }

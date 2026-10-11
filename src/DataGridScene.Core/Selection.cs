@@ -34,7 +34,12 @@ public sealed partial class GridSelection
     public long SelectedCellCount => Mode == GridSelectionMode.Cells ? _selectedCellCount : 0;
     public IReadOnlyList<long> SelectedIds => EnumerateSelectedIds().ToArray();
     /// <summary>Enumerate current IDs without copying the whole selection. Do not mutate while enumerating.</summary>
-    public IEnumerable<long> EnumerateSelectedIds() => Mode == GridSelectionMode.Cells ? _cells.Keys : _selected;
+    public IEnumerable<long> EnumerateSelectedIds()
+    {
+        if (Mode == GridSelectionMode.Cells)
+        { foreach (long id in _cells.Keys) yield return id; }
+        else { foreach (long id in _selected) yield return id; }
+    }
     private void SetCells(long id, ImmutableHashSet<string> fields)
     {
         _selectedCellCount += fields.Count - (_cells.TryGetValue(id, out var old) ? old.Count : 0);
@@ -103,7 +108,7 @@ public sealed partial class GridSelection
             _selected.Clear(); _selected.Add(cell.RecordId); Anchor = FocusedCell = cell; Notify(); return;
         }
         string[]? fields = Mode == GridSelectionMode.Cells ? Order(view, columnOrder) : null;
-        if (fields is not null && !fields.Contains(cell.Field, StringComparer.OrdinalIgnoreCase))
+        if (fields is not null && !fields.Contains(cell.Field, StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The focused column is not in the displayed column order.", nameof(cell));
         if (extend && Anchor is { } anchor)
         {
