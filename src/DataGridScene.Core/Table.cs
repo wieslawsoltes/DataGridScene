@@ -34,6 +34,8 @@ public sealed class GridChangedEventArgs(GridChangeKind kind, long revision) : E
 {
     public GridChangeKind Kind { get; } = kind;
     public long Revision { get; } = revision;
+    /// <summary>Owned edit details. Null means the complete change set is unavailable.</summary>
+    public IReadOnlyList<CellChange>? CellChanges { get; init; }
 }
 
 /// <summary>UI-independent, single-writer table. Marshal writes to the owning synchronization context.</summary>
@@ -71,11 +73,11 @@ public sealed class GridTable
             }
         }
     }
-    private void Notify(GridChangeKind kind)
+    private void Notify(GridChangeKind kind, IReadOnlyList<CellChange>? cells = null)
     {
         Revision++;
         if (_updateDepth > 0) _pendingChange = true;
-        else Changed?.Invoke(this, new(kind, Revision));
+        else Changed?.Invoke(this, new(kind, Revision) { CellChanges = cells });
     }
 
     public void Add(GridRecord record) => AddRange([record]);
@@ -141,7 +143,8 @@ public sealed class GridTable
         if (errors.Count > 0) throw new GridValidationException(errors);
         if (changes.Count == 0) return new(changes.AsReadOnly(), Revision);
         foreach (var (id, values) in candidates) this[id].Replace(values);
-        Notify(GridChangeKind.Edit);
-        return new(changes.AsReadOnly(), Revision);
+        var published = changes.AsReadOnly();
+        Notify(GridChangeKind.Edit, published);
+        return new(published, Revision);
     }
 }

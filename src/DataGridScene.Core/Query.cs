@@ -73,21 +73,32 @@ public sealed partial class GridView : IDisposable
         Refresh();
         Table.Changed += TableChanged;
     }
-    private void TableChanged(object? sender, GridChangedEventArgs args) => Refresh();
+    private void TableChanged(object? sender, GridChangedEventArgs args) => HandleTableChange(args);
     public void SetQuery(GridQuery query)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         query = QuerySnapshot.Capture(query, Table.Schema);
+        if (_deferDepth > 0) { _pendingQuery = query; _refreshPending = true; return; }
         Build(query);
         Query = query;
         Notify();
     }
-    public void Refresh() { ObjectDisposedException.ThrowIf(_disposed, this); Build(Query); Notify(); }
-    private void Notify() { Revision++; Changed?.Invoke(this, EventArgs.Empty); }
+    public void Refresh()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_deferDepth > 0) { _refreshPending = true; return; }
+        Build(Query); Notify();
+    }
+    private void Notify(GridViewChangeKind kind = GridViewChangeKind.Reset)
+    {
+        LastChangeKind = kind; Revision++; Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     private void Build(GridQuery query)
     {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var schema = Table.Schema;
+        var dependencies = QueryDependencies.Capture(schema, query);
         if (query.Groups.Count > 16) throw new ArgumentException("At most 16 grouping levels are supported.");
         if (query.Sorts.Select(s => s.Field.ToUpperInvariant()).Distinct().Count() != query.Sorts.Count) throw new ArgumentException("Duplicate sort fields.");
         if (query.Groups.Select(s => s.Field.ToUpperInvariant()).Distinct().Count() != query.Groups.Count) throw new ArgumentException("Duplicate group fields.");
@@ -132,6 +143,8 @@ public sealed partial class GridView : IDisposable
         foreach (var item in query.Summaries) _ = item.Display(totals[item.Key], schema);
         FilteredRecords = rows.AsReadOnly(); OrderedRecords = ordered.AsReadOnly();
         Groups = groups; PublishRows(flat); Summaries = totals;
+        _shapingDependencies = dependencies; _knownTableRevision = Table.Revision;
+        RefreshCount++; LastRefreshMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
     }
     private static string[] SearchTerms(string search)
     {
@@ -230,16 +243,22 @@ public sealed partial class GridView : IDisposable
     }
     private void Reflatten()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_deferDepth > 0) { _flattenPending = true; return; }
         var flat = new List<ViewRow>(FilteredRecords.Count);
         if (Groups.Count > 0) Flatten(Groups, flat, Query);
         else foreach (var record in FilteredRecords) AddRecord(flat, record, 0);
-        PublishRows(flat); Notify();
+        PublishRows(flat); Notify(GridViewChangeKind.Expansion);
     }
     private void PublishRows(List<ViewRow> rows)
     {
-        var indexes = new Dictionary<long, int>();
-        for (int i = 0; i < rows.Count; i++) if (rows[i].Kind == GridRowKind.Data) indexes.Add(rows[i].Record!.Id, i);
-        Rows = rows.AsReadOnly(); _rowIndexes = indexes;
+        var indexes = new Dictionary<long, int>(FilteredRecords.Count);
+        var special = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int i = 0; i < rows.Count; i++)
+            if (rows[i].Kind == GridRowKind.Data) indexes.Add(rows[i].Record!.Id, i);
+            else special.Add(rows[i].Key, i);
+        Rows = rows.AsReadOnly(); _rowIndexes = indexes; _specialRowIndexes = special;
+        RowsRevision++;
     }
     public bool IsExpanded(string groupKey) => !_collapsed.Contains(groupKey);
     public void ToggleGroup(string groupKey) { if (!_collapsed.Add(groupKey)) _collapsed.Remove(groupKey); Reflatten(); }

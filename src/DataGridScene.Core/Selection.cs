@@ -13,6 +13,7 @@ public sealed partial class GridSelection
 {
     private readonly HashSet<long> _selected = [];
     private readonly Dictionary<long, ImmutableHashSet<string>> _cells = [];
+    private long _selectedCellCount;
     private GridSelectionMode _mode;
     private int _updateDepth;
     private bool _pending;
@@ -30,8 +31,20 @@ public sealed partial class GridSelection
     public CellAddress? Anchor { get; private set; }
     /// <summary>Number of selected rows, or rows containing selected cells in cell mode.</summary>
     public int Count => Mode == GridSelectionMode.Cells ? _cells.Count : _selected.Count;
-    public long SelectedCellCount => Mode == GridSelectionMode.Cells ? _cells.Values.Sum(fields => (long)fields.Count) : 0;
-    public IReadOnlyList<long> SelectedIds => Mode == GridSelectionMode.Cells ? _cells.Keys.ToArray() : _selected.ToArray();
+    public long SelectedCellCount => Mode == GridSelectionMode.Cells ? _selectedCellCount : 0;
+    public IReadOnlyList<long> SelectedIds => EnumerateSelectedIds().ToArray();
+    /// <summary>Enumerate current IDs without copying the whole selection. Do not mutate while enumerating.</summary>
+    public IEnumerable<long> EnumerateSelectedIds() => Mode == GridSelectionMode.Cells ? _cells.Keys : _selected;
+    private void SetCells(long id, ImmutableHashSet<string> fields)
+    {
+        _selectedCellCount += fields.Count - (_cells.TryGetValue(id, out var old) ? old.Count : 0);
+        if (fields.IsEmpty) _cells.Remove(id); else _cells[id] = fields;
+    }
+    private void RemoveCells(long id)
+    {
+        if (_cells.Remove(id, out var fields)) _selectedCellCount -= fields.Count;
+    }
+    private void ClearCells() { _cells.Clear(); _selectedCellCount = 0; }
     public event EventHandler? Changed;
     public bool Contains(long id) => Mode == GridSelectionMode.Cells ? _cells.ContainsKey(id) : _selected.Contains(id);
     public bool ContainsCell(long id, string field) => Mode == GridSelectionMode.Cells
@@ -90,12 +103,12 @@ public sealed partial class GridSelection
             _selected.Clear(); _selected.Add(cell.RecordId); Anchor = FocusedCell = cell; Notify(); return;
         }
         string[]? fields = Mode == GridSelectionMode.Cells ? Order(view, columnOrder) : null;
-        if (fields is not null && !fields.Contains(cell.Field, StringComparer.OrdinalIgnoreCase))
+        if (fields is not null && !fields.Contains(cell.Field, StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The focused column is not in the displayed column order.", nameof(cell));
         if (extend && Anchor is { } anchor)
         {
             int a = view.IndexOfRecord(anchor.RecordId), b = view.IndexOfRecord(cell.RecordId);
-            if (!toggle) { _selected.Clear(); _cells.Clear(); }
+            if (!toggle) { _selected.Clear(); ClearCells(); }
             ImmutableHashSet<string>? block = null;
             if (fields is not null)
             {
@@ -107,7 +120,7 @@ public sealed partial class GridSelection
             void Add(long id)
             {
                 if (block is null) _selected.Add(id);
-                else _cells[id] = toggle && _cells.TryGetValue(id, out var previous) ? previous.Union(block) : block;
+                else SetCells(id, toggle && _cells.TryGetValue(id, out var previous) ? previous.Union(block) : block);
             }
             if (a >= 0 && b >= 0)
             {
@@ -118,12 +131,12 @@ public sealed partial class GridSelection
         }
         else
         {
-            if (!toggle) { _selected.Clear(); _cells.Clear(); }
+            if (!toggle) { _selected.Clear(); ClearCells(); }
             if (Mode == GridSelectionMode.Cells)
             {
                 var previous = _cells.GetValueOrDefault(cell.RecordId) ?? ImmutableHashSet.Create<string>(StringComparer.OrdinalIgnoreCase);
                 var next = toggle && previous.Contains(cell.Field) ? previous.Remove(cell.Field) : previous.Add(cell.Field);
-                if (next.IsEmpty) _cells.Remove(cell.RecordId); else _cells[cell.RecordId] = next;
+                SetCells(cell.RecordId, next);
             }
             else if (!toggle || !_selected.Remove(cell.RecordId)) _selected.Add(cell.RecordId);
             Anchor = cell;
@@ -133,7 +146,7 @@ public sealed partial class GridSelection
     public void SelectAll(GridView view, IReadOnlyList<string>? columnOrder = null)
     {
         var fields = Mode == GridSelectionMode.Cells ? Order(view, columnOrder).ToImmutableHashSet(StringComparer.OrdinalIgnoreCase) : null;
-        _selected.Clear(); _cells.Clear();
+        _selected.Clear(); ClearCells();
         if (Mode == GridSelectionMode.SingleRow)
         {
             if (FocusedCell is { } cell && view.FilteredRecords.Any(row => row.Id == cell.RecordId)) _selected.Add(cell.RecordId);
@@ -142,18 +155,18 @@ public sealed partial class GridSelection
         else
         {
             foreach (var record in view.FilteredRecords)
-                if (fields is null) _selected.Add(record.Id); else _cells[record.Id] = fields;
+                if (fields is null) _selected.Add(record.Id); else SetCells(record.Id, fields);
         }
         Notify();
     }
     public void Clear()
     {
-        _selected.Clear(); _cells.Clear(); FocusedCell = Anchor = null; Notify();
+        _selected.Clear(); ClearCells(); FocusedCell = Anchor = null; Notify();
     }
     public void Prune(GridTable table)
     {
         bool changed = _selected.RemoveWhere(id => !table.Contains(id)) > 0;
-        foreach (long id in _cells.Keys.Where(id => !table.Contains(id)).ToArray()) { _cells.Remove(id); changed = true; }
+        foreach (long id in _cells.Keys.Where(id => !table.Contains(id)).ToArray()) { RemoveCells(id); changed = true; }
         if (FocusedCell is { } focused && !table.Contains(focused.RecordId)) { FocusedCell = null; changed = true; }
         if (Anchor is { } anchor && !table.Contains(anchor.RecordId)) Anchor = null;
         if (changed) Notify();

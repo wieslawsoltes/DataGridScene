@@ -66,7 +66,7 @@ public sealed partial class GridSelection
         var focus = Resolve(state.FocusedCell); var anchor = Resolve(state.Anchor);
         _mode = state.Mode;
         _selected.Clear(); _selected.UnionWith(selected);
-        _cells.Clear(); foreach (var pair in cells) _cells.Add(pair.Key, pair.Value);
+        ClearCells(); foreach (var pair in cells) SetCells(pair.Key, pair.Value);
         FocusedCell = focus; Anchor = anchor;
         Notify();
     }

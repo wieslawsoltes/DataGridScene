@@ -24,6 +24,10 @@ public sealed class GridColumn
     public IReadOnlyList<string> Choices { get; init; } = Array.Empty<string>();
     public Func<object?, string?>? Validator { get; init; }
     public Func<GridRecord, object?>? ValueGetter { get; init; }
+    /// <summary>Complete same-record field dependencies of a deterministic ValueGetter.
+    /// Null means unknown (all edits invalidate shaping); empty means a constant value.
+    /// Dependencies are copied and validated when constructing the schema.</summary>
+    public IReadOnlyList<string>? ValueDependencies { get; init; }
     public IComparer<object?>? Comparer { get; init; }
     public bool IsReadOnly => ReadOnly || ValueGetter is not null;
 
@@ -103,7 +107,7 @@ public sealed class GridColumn
     }
 }
 
-public sealed class GridSchema
+public sealed partial class GridSchema
 {
     private readonly Dictionary<string, GridColumn> _fields;
     public ReadOnlyCollection<GridColumn> Columns { get; }
@@ -123,6 +127,7 @@ public sealed class GridSchema
             if (!double.IsFinite(column.Width) || column.Width <= 0) throw new ArgumentException("Column widths must be finite and positive.");
             if (!_fields.TryAdd(column.Field, column)) throw new ArgumentException($"Duplicate field: {column.Field}");
         }
+        CaptureValueDependencies(materialized);
         for (int i = 0; i < materialized.Length; i++) materialized[i].Index = i;
         Columns = Array.AsReadOnly(materialized); Culture = culture ?? CultureInfo.InvariantCulture;
     }
