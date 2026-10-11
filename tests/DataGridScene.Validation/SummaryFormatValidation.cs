@@ -47,6 +47,6 @@ internal static class SummaryFormatValidation
             if (text.Length != 4096 || !text.TrimStart().StartsWith("60.000", StringComparison.Ordinal))
                 throw new Exception("Bounded format was not preserved.");
         });
-        return NumericValidation.Append(new(results.AsReadOnly(), previous.Milliseconds + clock.Elapsed.TotalMilliseconds));
+        return IntegerValidation.Append(NumericValidation.Append(new(results.AsReadOnly(), previous.Milliseconds + clock.Elapsed.TotalMilliseconds)));
     }
 }

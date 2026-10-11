@@ -57,7 +57,12 @@ public sealed class GridColumn
             {
                 if (DataType == typeof(double)) input = json.GetDouble();
                 else if (DataType == typeof(float)) input = json.GetSingle();
-                else input = json.GetDecimal();
+                else
+                {
+                    if (GridValue.IsIntegralType(DataType) && !GridNumber.IsIntegralJson(json.GetRawText()))
+                        throw new FormatException("A whole number is required.");
+                    input = json.GetDecimal();
+                }
             }
             else input = GridValue.Unwrap(input);
             if (input is null || (input is string blank && string.IsNullOrWhiteSpace(blank) && DataType != typeof(string)))
@@ -80,7 +85,13 @@ public sealed class GridColumn
                 if (GridValue.IsIntegralType(DataType) && input is not string)
                 {
                     decimal number = Convert.ToDecimal(input, culture);
-                    if (number != decimal.Truncate(number)) throw new FormatException("A whole number is required.");
+                    bool whole = input switch
+                    {
+                        double binary => double.IsFinite(binary) && Math.Truncate(binary) == binary,
+                        float binary => float.IsFinite(binary) && MathF.Truncate(binary) == binary,
+                        _ => number == decimal.Truncate(number)
+                    };
+                    if (!whole) throw new FormatException("A whole number is required.");
                 }
                 value = Convert.ChangeType(input, DataType, culture);
             }

@@ -44,6 +44,29 @@ internal static class GridNumber
         if ((bits >> 63) != 0) numerator = -numerator;
         return shift >= 0 ? (numerator << shift, BigInteger.One) : (numerator, BigInteger.One << -shift);
     }
+    // Check exact lexical integrality before decimal parsing can round a JSON fraction.
+    // This is linear in the token length and never constructs an unbounded BigInteger.
+    internal static bool IsIntegralJson(ReadOnlySpan<char> text)
+    {
+        int e = text.IndexOfAny('e', 'E');
+        int exponent = 0;
+        if (e >= 0)
+        {
+            if (!int.TryParse(text[(e + 1)..], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exponent)) return false;
+            text = text[..e];
+        }
+        int fractionDigits = 0, trailingZeros = 0;
+        bool fraction = false, anyNonzero = false;
+        foreach (char c in text)
+        {
+            if (c == '.') { fraction = true; continue; }
+            if (c is '-' or '+') continue;
+            if (fraction) fractionDigits++;
+            if (c == '0') trailingZeros++;
+            else { trailingZeros = 0; anyNonzero = true; }
+        }
+        return !anyNonzero || (long)fractionDigits - exponent <= trailingZeros;
+    }
     internal static string Key(object value)
     {
         if (!Binary(value)) return "n:" + Convert.ToDecimal(value, CultureInfo.InvariantCulture).ToString("G29", CultureInfo.InvariantCulture);
