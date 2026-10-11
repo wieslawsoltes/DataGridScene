@@ -70,9 +70,13 @@ internal static class ChromeControlChecks
             catch(ArgumentException){Check(panel.Items.Count==1&&!panel.IsFilterEnabled);return;}
             throw new InvalidOperationException("Duplicate token was accepted.");
         });
-        Test("chrome.best-fit-publishes-one-layout",()=>{
+        Test("chrome.best-fit-and-idempotent-search-preserve-row-index",()=>{
             using var grid=new GridControl{Table=ValidationSuite.Fixture()};int changes=0;grid.ColumnLayout!.Changed+=(_,_)=>changes++;
             grid.BestFit();Check(changes==1);
+            grid.SetSearch("Alpha");grid.SetSearch("");grid.SetRowHeight("row:1",62);
+            long refresh=grid.View!.RefreshCount, rows=grid.RowGeometryBuildCount;
+            for(int i=0;i<20;i++)grid.SetSearch("");
+            Check(grid.View.RefreshCount==refresh&&grid.RowGeometryBuildCount==rows&&grid.HeightIndex[0]==62);
         });
         Test("chrome.best-fit-getter-failure-is-atomic",()=>{
             var table=new GridTable(new GridSchema([new("Name",typeof(string)),new("Calculated",typeof(string)){ValueGetter=_=>throw new InvalidOperationException("Expected failure")} ]));

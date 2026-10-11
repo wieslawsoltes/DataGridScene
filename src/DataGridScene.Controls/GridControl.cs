@@ -273,8 +273,9 @@ public sealed partial class GridControl : UserControl, IDisposable
     }
     public void SetSearch(string search)
     {
-        RequireView(); if (!CommitEdit()) return;
-        View!.SetQuery(View.RequestedQuery with { Search = search }); _offsetY = 0; UpdateGeometry(); ClearError();
+        RequireView(); ArgumentNullException.ThrowIfNull(search); if (!CommitEdit()) return;
+        if (View!.RequestedQuery.Search == search) return;
+        View.SetQuery(View.RequestedQuery with { Search = search }); _offsetY = 0; UpdateGeometry(); ClearError();
     }
     public void SetCriteria(string expression)
     {
