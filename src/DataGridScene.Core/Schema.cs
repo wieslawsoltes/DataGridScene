@@ -42,15 +42,27 @@ public sealed class GridColumn
         culture ??= CultureInfo.InvariantCulture;
         return value is IFormattable formatted ? formatted.ToString(Format, culture) ?? string.Empty : value.ToString() ?? string.Empty;
     }
-    public bool TryConvert(object? input, CultureInfo culture, out object? value, out string? error)
+    public bool TryConvert(object? input, CultureInfo culture, out object? value, out string? error) =>
+        TryConvert(input, culture, out value, out error, validate: true);
+
+    /// <summary>Convert to the field type. Filter literals use conversion without invoking edit validators.</summary>
+    public bool TryConvert(object? input, CultureInfo culture, out object? value, out string? error, bool validate)
     {
         value = null; error = null;
         try
         {
-            input = GridValue.Unwrap(input);
+            // JSON numbers are invariant and must be parsed directly into their destination
+            // type: converting a tiny/adjacent double through decimal loses its identity.
+            if (input is JsonElement { ValueKind: JsonValueKind.Number } json && GridValue.IsNumericType(DataType))
+            {
+                if (DataType == typeof(double)) input = json.GetDouble();
+                else if (DataType == typeof(float)) input = json.GetSingle();
+                else input = json.GetDecimal();
+            }
+            else input = GridValue.Unwrap(input);
             if (input is null || (input is string blank && string.IsNullOrWhiteSpace(blank) && DataType != typeof(string)))
             {
-                if (!AllowNull) throw new FormatException($"{Caption} is required.");
+                if (validate && !AllowNull) throw new FormatException($"{Caption} is required.");
             }
             else if (DataType.IsInstanceOfType(input)) value = input;
             else if (DataType == typeof(string)) value = Convert.ToString(input, culture);
@@ -72,8 +84,8 @@ public sealed class GridColumn
                 }
                 value = Convert.ChangeType(input, DataType, culture);
             }
-            if (!AllowNull && (value is null || value is string requiredText && string.IsNullOrWhiteSpace(requiredText))) throw new FormatException($"{Caption} is required.");
-            error = Validator?.Invoke(value); return error is null;
+            if (validate && !AllowNull && (value is null || value is string requiredText && string.IsNullOrWhiteSpace(requiredText))) throw new FormatException($"{Caption} is required.");
+            error = validate ? Validator?.Invoke(value) : null; return error is null;
         }
         catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or ArgumentException)
         { error = ex.Message; return false; }
@@ -142,8 +154,7 @@ public static class GridValue
         if (a is string sa && b is string sb) return StringComparer.OrdinalIgnoreCase.Compare(sa, sb);
         if (IsNumericType(a.GetType()) && IsNumericType(b.GetType()))
         {
-            try { return Convert.ToDecimal(a, CultureInfo.InvariantCulture).CompareTo(Convert.ToDecimal(b, CultureInfo.InvariantCulture)); }
-            catch (OverflowException) { return Convert.ToDouble(a, CultureInfo.InvariantCulture).CompareTo(Convert.ToDouble(b, CultureInfo.InvariantCulture)); }
+            return GridNumber.Compare(a, b);
         }
         if (a.GetType() == b.GetType() && a is IComparable comparable) return comparable.CompareTo(b);
         return StringComparer.OrdinalIgnoreCase.Compare(Convert.ToString(a, CultureInfo.InvariantCulture), Convert.ToString(b, CultureInfo.InvariantCulture));
@@ -155,8 +166,7 @@ public static class GridValue
         if (value is string text) return "s:" + text.ToUpperInvariant();
         if (IsNumericType(value.GetType()))
         {
-            try { return "n:" + Convert.ToDecimal(value, CultureInfo.InvariantCulture).ToString("G29", CultureInfo.InvariantCulture); }
-            catch (OverflowException) { return "n:" + Convert.ToDouble(value, CultureInfo.InvariantCulture).ToString("R", CultureInfo.InvariantCulture); }
+            return GridNumber.Key(value);
         }
         if (value is DateTime date) return "dt:" + date.Ticks;
         if (value is DateTimeOffset offset) return "dto:" + offset.UtcTicks;

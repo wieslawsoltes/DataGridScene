@@ -56,7 +56,7 @@ public sealed class HttpJsonPageSource(HttpClient client, Uri endpoint, GridSche
         var payload = await response.Content.ReadFromJsonAsync<Response>(cancellationToken).ConfigureAwait(false) ?? throw new InvalidDataException("Empty page response.");
         if (payload.Offset != offset || payload.Records.Length > count || payload.TotalCount is < 0) throw new InvalidDataException("Invalid page metadata.");
         var table = new GridTable(schema);
-        table.AddRange(payload.Records.Select(row => new GridRecord(row.Id, row.Values.Select(value => GridValue.Unwrap(value)), parentId: row.ParentId)));
+        table.AddRange(payload.Records.Select(row => new GridRecord(row.Id, row.Values.Cast<object?>(), parentId: row.ParentId)));
         return new(offset, table.Records.ToArray(), payload.TotalCount, payload.Revision);
     }
 }

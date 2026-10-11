@@ -40,9 +40,7 @@ public sealed record FieldFilter(string Field, FilterOperator Operator, object? 
         int Compare(object? a, object? b) => column.Comparer?.Compare(a, b) ?? GridValue.Compare(a, b);
         object? ConvertLiteral(object? input)
         {
-            input = GridValue.Unwrap(input);
-            if (input is null) return null;
-            if (!column.TryConvert(input, schema.Culture, out object? output, out string? error))
+            if (!column.TryConvert(input, schema.Culture, out object? output, out string? error, validate: false))
                 throw new FormatException($"Invalid filter for {column.Caption}: {error}");
             return output;
         }

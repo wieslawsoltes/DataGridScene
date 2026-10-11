@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace DataGridScene.Core;
 
 /// <summary>Validate and retain owned query collections before local or asynchronous execution.</summary>
@@ -39,6 +41,9 @@ public static class QuerySnapshot
                 !groupItems.Any(summary => summary.Key == sort.SummaryKey) || !seen.Add((sort.Field.ToUpperInvariant(), sort.SummaryKey)))
                 throw new ArgumentException("Invalid, duplicate or unresolved group summary sort.");
         }
+        // Preserve number tokens until the field's type is known, and detach them from
+        // a caller-owned JsonDocument that may be disposed immediately after capture.
+        static object? Literal(object? value) => value is JsonElement json ? json.Clone() : value;
         int nodes = 0;
         GridFilter Copy(GridFilter filter, int depth)
         {
@@ -48,8 +53,8 @@ public static class QuerySnapshot
                 case FieldFilter field:
                     _ = schema[field.Field];
                     if (!Enum.IsDefined(field.Operator) || field.Values?.Count > 1024) throw new ArgumentException("Invalid field filter.");
-                    return field with { Value = GridValue.Unwrap(field.Value), Upper = GridValue.Unwrap(field.Upper),
-                        Values = field.Values is null ? null : Array.AsReadOnly(field.Values.Select(GridValue.Unwrap).ToArray()) };
+                    return field with { Value = Literal(field.Value), Upper = Literal(field.Upper),
+                        Values = field.Values is null ? null : Array.AsReadOnly(field.Values.Select(Literal).ToArray()) };
                 case FilterGroup group:
                     if (group.Children is null || group.Children.Count > 1024) throw new ArgumentException("Invalid filter group.");
                     return group with { Children = Array.AsReadOnly(group.Children.Select(child => Copy(child, depth + 1)).ToArray()) };
