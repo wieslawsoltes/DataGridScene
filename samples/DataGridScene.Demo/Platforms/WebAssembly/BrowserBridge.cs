@@ -18,6 +18,11 @@ public static partial class BrowserBridge
         var page = Page; var grid = page.DataGrid; var view = grid.View; var frame = grid.Frame; var origin = grid.SurfaceOrigin();
         return JsonSerializer.Serialize(new
         {
+            nativeCells = grid.GetNativeCells().Select(cell => new {
+                address = new { cell.Address.RecordId, cell.Address.Field }, cell.ControlType, cell.Bounds, cell.ClipBounds, cell.IsDirty, cell.CanEdit, cell.Error
+            }).ToArray(),
+            nativeStats = new { grid.RealizedCellControlCount, grid.PooledCellControlCount, grid.CreatedCellControlCount,
+                grid.ReusedCellControlCount, grid.CellControlBindCount, grid.CellControlPlacementCount, grid.HasPendingCellEdits },
             chrome = page.ChromeSnapshot(),
             filterPanel = new { visible = grid.FilterPanel.Visibility == Visibility.Visible, items = grid.FilterPanel.Items.Select(item => new { item.Key, item.Caption, item.Description }).ToArray(), grid.FilterPanel.IsFilterEnabled, grid.FilterPanel.ContentBuildCount },
             ready = page.Ready, page.Scenario, page.RecordCount, filteredCount = view?.FilteredRecords.Count, viewRowCount = view?.Rows.Count,
@@ -68,6 +73,7 @@ public static partial class BrowserBridge
             switch (name)
             {
                 case "value-filter": grid.SetColumnValues(Text("field"), JsonSerializer.Deserialize<ColumnValueFilter>(input.GetProperty("filter").GetRawText(), Json)); break;
+                case "validate-native-controls": return JsonSerializer.Serialize(new { ok = true, report = NativeControlChecks.Run() }, Json);
                 case "validate-chrome": return JsonSerializer.Serialize(new { ok = true, report = ChromeControlChecks.Run() }, Json);
                 case "filter-enabled": grid.IsFilterEnabled = input.GetProperty("value").GetBoolean(); break;
                 case "validate-controls": return JsonSerializer.Serialize(new { ok = true, report = ControlReviewChecks.Run() }, Json);
@@ -120,5 +126,5 @@ public static partial class BrowserBridge
         catch (Exception error) { return JsonSerializer.Serialize(new { ok = false, error = error.Message }, Json); }
     }
     [JSExport]
-    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.FilterPresentationValidationSuite.RunAsync(), Json);
+    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.NativeCellValidationSuite.RunAsync(), Json);
 }
