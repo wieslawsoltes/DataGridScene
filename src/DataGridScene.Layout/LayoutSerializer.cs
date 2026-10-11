@@ -12,6 +12,7 @@ public sealed record GridLayoutDocument
     /// <summary>Base query; in v2 the auto-filter row is stored separately in FilterTexts.</summary>
     public GridQuery Query { get; init; } = new();
     public IReadOnlyDictionary<string, string> FilterTexts { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, ColumnValueFilter> ValueFilters { get; init; } = new Dictionary<string, ColumnValueFilter>();
     public double RowHeight { get; init; } = 28;
     public bool ShowFilterRow { get; init; } = true;
     public bool ShowGroupPanel { get; init; } = true;
@@ -26,10 +27,11 @@ public sealed record GridLayoutDocument
 
     public GridQuery EffectiveQuery()
     {
-        if (FilterTexts.Count == 0) return Query;
+        if (FilterTexts.Count == 0 && ValueFilters.Count == 0) return Query;
         var filters = new List<GridFilter>();
         if (Query.Filter is not null) filters.Add(Query.Filter);
         foreach (var (field, text) in FilterTexts) if (CriteriaParser.AutoFilter(field, text) is { } filter) filters.Add(filter);
+        foreach (var (field, values) in ValueFilters) if (values.ToFilter(field) is { } valueFilter) filters.Add(valueFilter);
         return Query with { Filter = filters.Count == 0 ? null : GridFilter.And(filters.ToArray()) };
     }
 }
@@ -45,6 +47,8 @@ public static class LayoutSerializer
     public static string Save(GridLayoutDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
+        // Older readers must reject, rather than ignore, a saved checked-value filter.
+        if (document.ValueFilters.Count > 0 && document.Version < 3) document = document with { Version = 3 };
         string json = JsonSerializer.Serialize(document, Options);
         if (json.Length > 1_048_576) throw new InvalidOperationException("Layout state exceeds 1 MiB. Save without selection state for very large sparse selections.");
         return json;
@@ -57,14 +61,21 @@ public static class LayoutSerializer
         GridLayoutDocument document;
         try { document = JsonSerializer.Deserialize<GridLayoutDocument>(json, Options) ?? throw new FormatException("Empty layout."); }
         catch (JsonException error) { throw new FormatException("Invalid layout JSON.", error); }
-        if (document.Version is not (1 or 2)) throw new FormatException($"Unsupported layout version: {document.Version}");
+        if (document.Version is not (1 or 2 or 3)) throw new FormatException($"Unsupported layout version: {document.Version}");
         if (!double.IsFinite(document.RowHeight) || document.RowHeight < 18 || document.RowHeight > 256) throw new FormatException("Invalid row height.");
         if (document.Theme is not ("Light" or "Dark") || !Enum.IsDefined(document.SelectionMode)) throw new FormatException("Unknown theme or selection mode.");
         if (!double.IsFinite(document.HorizontalOffset) || !double.IsFinite(document.VerticalOffset) || document.HorizontalOffset < 0 || document.VerticalOffset < 0)
             throw new FormatException("Scroll offsets must be finite and nonnegative.");
-        if (document.Columns is null || document.Query is null || document.FilterTexts is null || document.RowHeights is null || document.ViewState is null)
+        if (document.Columns is null || document.Query is null || document.ValueFilters is null || document.FilterTexts is null || document.RowHeights is null || document.ViewState is null)
             throw new FormatException("Missing layout data.");
         if (document.FilterTexts.Count > schema.Columns.Count || document.RowHeights.Count > 16384) throw new FormatException("Too many saved fields or row heights.");
+        if (document.ValueFilters.Count > schema.Columns.Count) throw new FormatException("Too many value-filter fields.");
+        var valueFilters = new Dictionary<string, ColumnValueFilter>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (field, values) in document.ValueFilters)
+        {
+            if (values is null || !schema.TryGetColumn(field, out var column) || !valueFilters.TryAdd(column.Field, values.Capture(schema, column.Field)))
+                throw new FormatException("Invalid or duplicate value-filter field.");
+        }
         var filters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (field, text) in document.FilterTexts)
         {
@@ -85,6 +96,7 @@ public static class LayoutSerializer
         document = document with
         {
             Columns = check.Columns,
+            ValueFilters = new ReadOnlyDictionary<string, ColumnValueFilter>(valueFilters),
             FilterTexts = new ReadOnlyDictionary<string, string>(filters),
             RowHeights = new ReadOnlyDictionary<string, double>(heights)
         };

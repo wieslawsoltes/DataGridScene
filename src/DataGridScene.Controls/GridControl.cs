@@ -110,12 +110,13 @@ public sealed partial class GridControl : UserControl, IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(GridControl));
         CancelEdit();
+        CloseValueFilter();
         ResetPointerState();
         if (View is not null) { View.Changed -= ViewChanged; View.Dispose(); }
         if (ColumnLayout is not null) ColumnLayout.Changed -= LayoutChanged;
         if (History is not null) History.Changed -= HistoryChanged;
         View = null; ColumnLayout = null; History = null; Selection.Clear();
-        _filterTexts.Clear(); _criteria = null; _rowHeights.Clear(); _offsetX = _offsetY = 0;
+        _filterTexts.Clear(); _valueFilters.Clear(); _criteria = null; _rowHeights.Clear(); _offsetX = _offsetY = 0;
         if (table is not null)
         {
             View = new(table); ColumnLayout = new(table.Schema); History = new(table);
@@ -266,7 +267,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public void SetQuery(GridQuery query)
     {
         RequireView(); if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
-        View!.SetQuery(query); _criteria = View.RequestedQuery.Filter; _filterTexts.Clear(); Renderer.FilterTexts = _filterTexts;
+        View!.SetQuery(query); _criteria = View.RequestedQuery.Filter; _filterTexts.Clear(); _valueFilters.Clear(); RefreshFilterDisplay();
         _offsetY = 0; UpdateGeometry(); ClearError();
     }
     public void SetSearch(string search)
@@ -282,24 +283,29 @@ public sealed partial class GridControl : UserControl, IDisposable
     public void SetColumnFilter(string field, string text)
     {
         RequireView(); if (!_committing && !CommitEdit()) return;
+        field = Table!.Schema[field].Field;
+        var values = new Dictionary<string, ColumnValueFilter>(_valueFilters, StringComparer.OrdinalIgnoreCase);
+        values.Remove(field);
         var filters = new Dictionary<string, string>(_filterTexts, StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(text)) filters.Remove(field); else filters[field] = text.Trim();
-        ApplyFilter(_criteria, filters);
+        ApplyFilter(_criteria, filters, values);
+        _valueFilters.Clear(); foreach (var pair in values) _valueFilters.Add(pair.Key, pair.Value);
         _filterTexts.Clear(); foreach (var pair in filters) _filterTexts.Add(pair.Key, pair.Value);
-        Renderer.FilterTexts = _filterTexts; ClearError(); Redraw();
+        RefreshFilterDisplay(); ClearError(); Redraw();
     }
-    private void ApplyFilter(GridFilter? criteria, IReadOnlyDictionary<string, string> texts)
+    private void ApplyFilter(GridFilter? criteria, IReadOnlyDictionary<string, string> texts, IReadOnlyDictionary<string, ColumnValueFilter>? values = null)
     {
         var terms = new List<GridFilter>();
         if (criteria is not null) terms.Add(criteria);
         foreach (var pair in texts) if (CriteriaParser.AutoFilter(pair.Key, pair.Value) is { } filter) terms.Add(filter);
+        foreach (var (field, selection) in values ?? _valueFilters) if (selection.ToFilter(field) is { } filter) terms.Add(filter);
         View!.SetQuery(View.RequestedQuery with { Filter = terms.Count == 0 ? null : GridFilter.And(terms.ToArray()) });
         _offsetY = 0; UpdateGeometry();
     }
     public void ClearFilters()
     {
         RequireView(); if (!CommitEdit()) return;
-        View!.SetQuery(View.RequestedQuery with { Filter = null, Search = "" }); _criteria = null; _filterTexts.Clear(); Renderer.FilterTexts = _filterTexts; _offsetY = 0; ClearError(); UpdateGeometry();
+        View!.SetQuery(View.RequestedQuery with { Filter = null, Search = "" }); _criteria = null; _filterTexts.Clear(); _valueFilters.Clear(); RefreshFilterDisplay(); _offsetY = 0; ClearError(); UpdateGeometry();
     }
     public void SortColumn(string field, SortDirection? direction, bool append = false)
     {
@@ -344,6 +350,7 @@ public sealed partial class GridControl : UserControl, IDisposable
         {
             Columns = ColumnLayout!.Columns, Query = View!.RequestedQuery with { Filter = _criteria },
             FilterTexts = new Dictionary<string, string>(_filterTexts, StringComparer.OrdinalIgnoreCase),
+            ValueFilters = new Dictionary<string, ColumnValueFilter>(_valueFilters, StringComparer.OrdinalIgnoreCase),
             RowHeight = RowHeight, ShowFilterRow = ShowFilterRow, ShowGroupPanel = ShowGroupPanel,
             ShowBands = ShowBands, Theme = DarkTheme ? "Dark" : "Light", SelectionMode = SelectionMode,
             HorizontalOffset = _offsetX, VerticalOffset = _offsetY,
@@ -380,7 +387,9 @@ public sealed partial class GridControl : UserControl, IDisposable
         _criteria = document.Query.Filter;
         _filterTexts.Clear();
         foreach (var pair in document.FilterTexts) _filterTexts.Add(pair.Key, pair.Value);
-        Renderer.FilterTexts = _filterTexts;
+        _valueFilters.Clear(); foreach (var pair in document.ValueFilters) _valueFilters.Add(pair.Key, pair.Value);
+        CloseValueFilter();
+        RefreshFilterDisplay();
         _rowHeights.Clear();
         foreach (var pair in document.RowHeights) _rowHeights.Add(pair.Key, pair.Value);
         _metrics = _metrics with
@@ -401,7 +410,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public new void Dispose()
     {
         if (_disposed) return;
-        CancelEdit(); _disposed = true;
+        CancelEdit(); CloseValueFilter(); _disposed = true;
         if (View is not null) { View.Changed -= ViewChanged; View.Dispose(); }
         if (ColumnLayout is not null) ColumnLayout.Changed -= LayoutChanged;
         if (History is not null) History.Changed -= HistoryChanged;
