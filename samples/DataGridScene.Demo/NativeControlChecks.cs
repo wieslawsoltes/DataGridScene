@@ -45,7 +45,16 @@ internal static class NativeControlChecks
             using var buffer=new GridCellEditBuffer(table,history,1,"Number");var template=GridCellTemplates.NumberBox(0,100);var control=(NumberBox)template.Create();
             buffer.SynchronizeBinding(()=>{control.DataContext=buffer;template.Bind!(control,buffer);});
             control.Text="fractional 1.5";template.Flush!(control,buffer);Check(buffer.IsDirty&&!buffer.TryCommit());
-            template.Bind!(control,buffer);Check(control.Text=="fractional 1.5");buffer.Cancel();template.Bind!(control,buffer);Check(control.Value==10);
+            template.Bind!(control,buffer);Check(control.Text=="fractional 1.5");buffer.Cancel();template.Bind!(control,buffer);Check(control.Value==10&&control.Text=="10");
+        });
+        Test("native-control.untouched-numeric-display-does-not-round-or-clamp",()=>{
+            foreach (decimal value in new[] { 123456789.123456789m, 1000m, 0.000000000000000000000001m })
+            {
+                var source=new GridTable(new GridSchema([new("Exact",typeof(decimal))]));source.Add(new(1,new object?[]{value}));
+                using var buffer=new GridCellEditBuffer(source,new(source),1,"Exact");var template=GridCellTemplates.NumberBox(0,100);
+                var control=template.Create();buffer.SynchronizeBinding(()=>{control.DataContext=buffer;template.Bind!(control,buffer);});
+                template.Flush!(control,buffer);Check(!buffer.IsDirty&&buffer.TryCommit()&&Equals(buffer.Value,value));
+            }
         });
         Test("native-control.factory-ranges-validate-before-creation",()=>{
             int rejected=0;foreach(Action action in new Action[]{()=>GridCellTemplates.Slider(1,1),()=>GridCellTemplates.NumberBox(0,1,0),()=>GridCellTemplates.ProgressBar(double.NaN,100)})

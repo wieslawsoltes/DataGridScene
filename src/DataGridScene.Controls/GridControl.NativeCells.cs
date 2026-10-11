@@ -104,6 +104,11 @@ public sealed partial class GridControl
     private void InitializeCellControls()
     {
         _root.Children.Insert(1, _nativeCells);
+        _nativeCells.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler((_, args) =>
+        {
+            if (Frame is not null) { var point = args.GetCurrentPoint(_surface).Position; UpdateHover(Frame.HitTest(point.X, point.Y)); }
+        }), true);
+        _nativeCells.PointerExited += (_, _) => UpdateHover(null);
         _nativeCells.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, args) =>
         {
             if (IsNativeWheelConsumer(args.OriginalSource as DependencyObject)) return;
@@ -116,11 +121,14 @@ public sealed partial class GridControl
     }
     private bool IsNativeWheelConsumer(DependencyObject? source)
     {
+        bool scrollable = false;
         for (var element = source; element is not null && !ReferenceEquals(element, _nativeCells); element = VisualTreeHelper.GetParent(element))
         {
-            if (element is TextBox { AcceptsReturn: true } or Slider or ComboBox { IsDropDownOpen: true } or CalendarDatePicker { IsCalendarOpen: true }) return true;
+            if (element is TextBox text) return text.AcceptsReturn;
+            if (element is Slider or ComboBox { IsDropDownOpen: true } or CalendarDatePicker { IsCalendarOpen: true }) return true;
+            if (element is ScrollViewer viewer && viewer.ScrollableHeight > 0) scrollable = true;
         }
-        return false;
+        return scrollable;
     }
     private NativeHost AcquireCell(GridCellTemplate template)
     {
@@ -162,6 +170,12 @@ public sealed partial class GridControl
             // Tab is native focus traversal, not grid navigation. Commit before leaving.
             else if (args.Key == VirtualKey.Tab && !CommitCellBuffer(buffer)) { args.Handled = true; FocusCell(host); }
         };
+        if (element is NumberBox)
+            host.Container.AddHandler(UIElement.KeyUpEvent, new KeyEventHandler((_, args) =>
+            {
+                if (args.Key == VirtualKey.Enter && host.Buffer is { IsActive: true })
+                { if (CommitOtherCellControls()) Focus(FocusState.Keyboard); args.Handled = true; }
+            }), true);
         CreatedCellControlCount++; return host;
     }
     private bool IsFocusWithin(DependencyObject parent)
@@ -221,6 +235,10 @@ public sealed partial class GridControl
         if (_syncingNativeCells || _committingNativeCells || _cellHosts.Values.Any(host => host.Buffer?.IsCommitting == true)) { _nativeSyncPending = true; return; }
         if (Frame is null || Table is null || View is null || _cellTemplates.Count == 0 && _nativeEditCell is null)
         { if (_cellHosts.Count > 0) ResetCellControls(); return; }
+        // Selection pruning can notify before the row-height rebuild on a reset.
+        // Never reconcile against a frame belonging to the previous view/row count.
+        if (!ReferenceEquals(View.Table, Table) || !ReferenceEquals(Frame.View, View) || Frame.Heights.Count != View.Rows.Count)
+        { _nativeFrame = null; return; }
         _syncingNativeCells = true;
         try
         {

@@ -73,6 +73,7 @@ public static partial class BrowserBridge
             switch (name)
             {
                 case "value-filter": grid.SetColumnValues(Text("field"), JsonSerializer.Deserialize<ColumnValueFilter>(input.GetProperty("filter").GetRawText(), Json)); break;
+                case "native-fixture": page.ApplyNativeCellScenario(input.GetProperty("count").GetInt32()); break;
                 case "validate-native-controls": return JsonSerializer.Serialize(new { ok = true, report = NativeControlChecks.Run() }, Json);
                 case "validate-chrome": return JsonSerializer.Serialize(new { ok = true, report = ChromeControlChecks.Run() }, Json);
                 case "filter-enabled": grid.IsFilterEnabled = input.GetProperty("value").GetBoolean(); break;

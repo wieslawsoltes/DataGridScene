@@ -15,7 +15,7 @@ namespace DataGridScene.Controls;
 /// on activation, sliders on release. Binding/recycling never writes data.</summary>
 public static class GridCellTemplates
 {
-    private sealed class State { public bool Binding; }
+    private sealed class State { public bool Binding; public string? NumberText; }
     private static readonly ConditionalWeakTable<FrameworkElement, State> States = new();
     private static GridCellEditBuffer? Buffer(FrameworkElement element) =>
         !States.GetOrCreateValue(element).Binding && element.DataContext is GridCellEditBuffer { IsActive: true } buffer ? buffer : null;
@@ -105,19 +105,27 @@ public static class GridCellTemplates
         return new(() =>
         {
             var control = new NumberBox { Minimum = minimum, Maximum = maximum, SmallChange = step, MinWidth = 0, MinHeight = 0,
-                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, FontSize = 12 };
+                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, ValidationMode = NumberBoxValidationMode.Disabled, FontSize = 12 };
             control.ValueChanged += (_, _) => {
-                if (Buffer(control) is { } buffer && !(double.IsNaN(control.Value) && buffer.Value is null) && control.Value != Number(buffer.Value, minimum, maximum))
+                if (Buffer(control) is { } buffer && !(double.IsNaN(control.Value) && buffer.Value is null) && !SameNumber(buffer.Value, control.Value, buffer.Culture))
                     buffer.Value = double.IsNaN(control.Value) ? null : control.Value;
             };
             return control;
         }) { Bind = (element, buffer) => Bind(element, () => {
             var control = (NumberBox)element;
-            if (!buffer.IsDirty) control.Value = buffer.Value is null ? double.NaN : Number(buffer.Value, minimum, maximum);
+            if (!buffer.IsDirty)
+            {
+                control.Value = buffer.Value is null ? double.NaN : Number(buffer.Value, minimum, maximum);
+                // Restore invalid input on Cancel even if the numeric Value did not change.
+                control.Text = buffer.Value is null ? "" : control.NumberFormatter.FormatDouble(control.Value);
+                States.GetOrCreateValue(control).NumberText = control.Text;
+            }
             control.IsEnabled = buffer.CanEdit;
         }), Flush = (element, buffer) => {
             var control = (NumberBox)element;
-            string expected = buffer.Value is null ? "" : Convert.ToString(buffer.Value, buffer.Culture) ?? "";
+            // Compare against the actual formatted binding, not the exact source value:
+            // an untouched double-based display must not round or clamp stored decimals.
+            string? expected = States.GetOrCreateValue(control).NumberText;
             if (!string.Equals(control.Text, expected, StringComparison.Ordinal) && control.IsEnabled)
                 buffer.Value = control.Text;
         } };
@@ -141,6 +149,12 @@ public static class GridCellTemplates
         control.IsEnabled = buffer.CanEdit;
     }), Unbind = (element, _) => ((CalendarDatePicker)element).IsCalendarOpen = false };
 
+    private static bool SameNumber(object? value, double number, CultureInfo culture)
+    {
+        if (value is null) return double.IsNaN(number);
+        try { return Convert.ToDouble(value, culture) == number; }
+        catch (Exception error) when (error is FormatException or InvalidCastException or OverflowException) { return false; }
+    }
     private static void ValidateRange(double minimum, double maximum)
     { if (!double.IsFinite(minimum) || !double.IsFinite(maximum) || maximum <= minimum) throw new ArgumentOutOfRangeException(nameof(maximum)); }
     private static double Number(object? value, double minimum, double maximum)

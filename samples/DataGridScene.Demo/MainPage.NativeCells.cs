@@ -19,10 +19,12 @@ public sealed partial class MainPage
         button.HorizontalContentAlignment = HorizontalAlignment.Left;
         navigation.Children.Insert(navigation.Children.IndexOf(_actions["scenario-Performance"]), button);
     }
-    private void ApplyNativeCellScenario()
+    private void ApplyNativeCellScenario() => ApplyNativeCellScenario(10000);
+    public void ApplyNativeCellScenario(int count)
     {
+        if (count < 1 || count > 100000) throw new ArgumentOutOfRangeException(nameof(count));
         if (!DataGrid.CommitEdit()) return;
-        Reload(10000); Scenario = "Native controls"; DataGrid.RowHeight = 36; DataGrid.ShowBands = false;
+        Reload(count); Scenario = "Native controls"; DataGrid.RowHeight = 36; DataGrid.ShowBands = false;
         var visible = new HashSet<string> { "OrderID", "Company", "Quantity", "OrderDate", "Progress", "Status", "Verified", "Notes" };
         using (DataGrid.BeginDataUpdate())
         {
