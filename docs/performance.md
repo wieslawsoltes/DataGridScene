@@ -51,6 +51,12 @@ Dispose scopes promptly on the owning UI thread. Do not span an `await`, rebind 
 
 `GridTable.BeginUpdate` retains its older single-Reset notification behavior. Use `GridView.DeferRefresh` or `GridControl.BeginDataUpdate` when individual edit metadata and conditional shaping matter.
 
+## Computed sort-key caching
+
+A full shaping pass caches deterministic computed sort keys once per record, instead of invoking a getter during every comparison. Stored fields already have constant-time access and do not need this cache. A stable integer permutation breaks ties by input order without an ID-to-ordinal dictionary. Failed key evaluation does not publish a partially sorted view.
+
+The cache is limited to one million value references per pass; computed columns beyond that budget retain direct evaluation. This bounds cached slots, not the size of application-produced objects. The permutation and output sequence still use linear storage. Precomputing keys can be less beneficial for expensive secondary getters rarely needed to break ties, so the result is not a universal speed guarantee. Getters and comparers must remain deterministic during sorting.
+
 ## Adaptive row geometry
 
 A uniform `RowHeightIndex` stores only count and default height: reset, total height, prefix offsets and inverse lookup require no per-row arrays. Fractional-height boundary tests ensure that division rounding does not move an exact boundary to the wrong row.
@@ -75,11 +81,12 @@ Same machine, .NET 10.0.12, Debian 13 x64. The same `PerformanceBenchmarks.cs` s
 
 | Workload | Operations per round | Previous median | Optimized median | Allocated bytes, previous → optimized |
 |---|---:|---:|---:|---:|
-| Display-only edits in 100,000 sorted/grouped rows | 20 | 1,588.352 ms | 0.095 ms | 854,718,200 → 19,360 |
-| Reset one million uniform row heights and query offsets | 10 | 26.717 ms | 0.008 ms | 160,000,560 → 0 |
-| Read the count of 300,000 selected cells | 1,000 | 114.491 ms | 0.028 ms | 0 → 0 |
+| Display-only edits in 100,000 sorted/grouped rows | 20 | 1,674.934 ms | 0.078 ms | 854,718,200 → 19,360 |
+| Reset one million uniform row heights and query offsets | 10 | 19.757 ms | 0.008 ms | 160,000,560 → 0 |
+| Read the count of 300,000 selected cells | 1,000 | 119.681 ms | 0.028 ms | 0 → 0 |
+| Full refresh of 100,000 rows sorted by a computed decimal total | 3 | 721.307 ms | 250.199 ms | 487,599,216 → 77,504,616 |
 
-The large difference is from removing unnecessary work, **not** faster execution of a full sort or group operation. Tiny optimized timings are sensitive to clock resolution, JIT state and measurement overhead; do not extrapolate a universal speed multiplier. These microbenchmarks do not include Uno, native editors, painting, GPU work, presentation, network latency or the event-loop cost of a live application. Shape-affecting edits still rebuild the materialized view.
+The first three differences come from removing unnecessary work, **not** faster execution of a full sort or group operation. The fourth separately measures the computed-sort-key cache while still rebuilding the complete view. Tiny optimized timings are sensitive to clock resolution, JIT state and measurement overhead; do not extrapolate a universal speed multiplier. These microbenchmarks do not include Uno, native editors, painting, GPU work, presentation, network latency or the event-loop cost of a live application. Shape-affecting edits still rebuild the materialized view.
 
 Run the current harness with:
 

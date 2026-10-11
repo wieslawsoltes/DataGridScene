@@ -59,3 +59,5 @@ Owned `CellChanges` notifications describe successful atomic table edits. A view
 Nested `DeferRefresh` scopes retain `Query` as the published query and expose pending configuration through `RequestedQuery`. Outermost disposal publishes one refresh, expansion update or values notification. The Uno `BeginDataUpdate` scope also defers geometry, redraw and control state notifications. Scopes are synchronous, single-writer and not rollback transactions; see [performance](performance.md) for exception and lifetime semantics.
 
 Selection mutation helpers maintain a cached selected-cell count across toggle, range, select-all, restore and prune operations. Consumers can enumerate IDs without copying the whole selection; snapshot-returning `SelectedIds` is retained for compatibility.
+
+Full sorting caches computed keys within a one-million-reference budget and sorts a stable integer permutation. Stored keys remain direct field reads; input ordinals resolve equal comparisons without a dictionary lookup. This reduces repeated computed getter evaluation, but does not turn relevant edits into incremental sorted-tree updates.

@@ -59,7 +59,7 @@ Display-only edits reuse shaped rows and geometry when validated dependencies pr
 
 ## Validation and deployment
 
-The shared C# suite currently contains **249 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace, 20 summary and 11 live-update/performance checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
+The shared C# suite currently contains **252 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace, 20 summary and 11 live-update/performance checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
 
 CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell, opens the nested-band and group-summary samples, opens/cancels the summary editor, and verifies a display-only update on 100,000 rows without reshaping.
 

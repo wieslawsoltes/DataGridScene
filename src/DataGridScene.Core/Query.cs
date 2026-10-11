@@ -113,20 +113,7 @@ public sealed partial class GridView : IDisposable
             if (terms.Length > 0 && !terms.All(term => schema.Columns.Any(column => column.Display(column.GetValue(record), schema.Culture).Contains(term, StringComparison.OrdinalIgnoreCase)))) continue;
             rows.Add(record);
         }
-        var sorts = query.Sorts.Select(sort => (Column: schema[sort.Field], sort.Direction)).ToArray();
-        if (sorts.Length > 0)
-        {
-            var ordinal = rows.Select((row, index) => (row.Id, index)).ToDictionary(pair => pair.Id, pair => pair.index);
-            rows.Sort((a, b) =>
-            {
-                foreach (var (column, direction) in sorts)
-                {
-                    int comparison = column.Comparer?.Compare(column.GetValue(a), column.GetValue(b)) ?? GridValue.Compare(column.GetValue(a), column.GetValue(b));
-                    if (comparison != 0) return direction == SortDirection.Ascending ? Math.Sign(comparison) : -Math.Sign(comparison);
-                }
-                return ordinal[a.Id].CompareTo(ordinal[b.Id]);
-            });
-        }
+        SortRows(rows, query);
         var totals = SummaryCalculator.Calculate(rows, schema, query.Summaries);
         IReadOnlyList<GridGroup> groups = query.Groups.Count > 0 ? BuildGroups(rows, query, 0, "") : Array.Empty<GridGroup>();
         var flat = new List<ViewRow>(rows.Count + groups.Count);

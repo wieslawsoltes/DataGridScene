@@ -243,6 +243,39 @@ public static class UpdateValidationSuite
             table.Remove([1,2,3]); selection.Prune(table); Check(selection.SelectedCellCount == selection.EnumerateCells().LongCount());
             selection.Mode = GridSelectionMode.MultipleRows; Check(selection.SelectedCellCount == 0);
         });
+        Test("sorting.computed-key-evaluated-once-per-record", () => {
+            int evaluations = 0;
+            var table = new GridTable(new GridSchema([new("Input", typeof(int)),
+                new("Key", typeof(int)) { ValueGetter = row => { evaluations++; return -(int)row[0]!; } }]));
+            table.AddRange(Enumerable.Range(0, 10000).Select(i => new GridRecord(i, new object?[] { i, null })));
+            using var view = new GridView(table);
+            view.SetQuery(new() { Sorts = [new("Key")] });
+            Check(evaluations == 10000, $"Expected 10000 key evaluations, got {evaluations}");
+            Check(view.FilteredRecords.Select(row => row.Id).SequenceEqual(Enumerable.Range(0, 10000).Reverse().Select(i => (long)i)));
+        });
+        Test("sorting.cached-keys-stable-multisort-and-comparer", () => {
+            var table = new GridTable(new GridSchema([new("Input", typeof(int)),
+                new("Key", typeof(int)) { ValueGetter = row => (int)row[0]! % 7 },
+                new("Text", typeof(string)) { Comparer = Comparer<object?>.Create((a,b) => StringComparer.Ordinal.Compare((string?)a, (string?)b)) }]));
+            table.AddRange(Enumerable.Range(0, 500).Select(i => new GridRecord(1000-i, new object?[] { i, null, i % 3 == 0 ? null : i % 2 == 0 ? "a" : "B" })));
+            using var view = new GridView(table);
+            foreach (var direction in new[] { SortDirection.Ascending, SortDirection.Descending })
+            {
+                view.SetQuery(new() { Sorts = [new("Key", direction), new("Text")] });
+                var expected = direction == SortDirection.Ascending ? table.Records.OrderBy(row => (int)row[0]! % 7) : table.Records.OrderByDescending(row => (int)row[0]! % 7);
+                Check(view.FilteredRecords.Select(row => row.Id).SequenceEqual(expected.ThenBy(row => (string?)row[2], StringComparer.Ordinal).Select(row => row.Id)));
+            }
+        });
+        Test("sorting.computed-key-failure-does-not-publish", () => {
+            bool fail = false;
+            var table = new GridTable(new GridSchema([new("Input", typeof(int)), new("Key", typeof(int))
+                { ValueGetter = row => fail && row.Id == 2 ? throw new InvalidOperationException("invalid key") : row[0] }]));
+            table.AddRange(Enumerable.Range(0, 10).Select(i => new GridRecord(i, new object?[] { i, null })));
+            using var view = new GridView(table); var rows = view.Rows; var query = view.Query; long builds = view.RefreshCount;
+            fail = true; Reject<InvalidOperationException>(() => view.SetQuery(new() { Sorts = [new("Key")] }));
+            Check(ReferenceEquals(rows, view.Rows) && ReferenceEquals(query, view.Query) && view.RefreshCount == builds);
+            fail = false; view.SetQuery(new() { Sorts = [new("Key")] }); Check(view.Rows.Count == 10);
+        });
         if (stress) Test("updates.stress-display-edits-100000-rows", () => {
             var table = Table(100000); using var view = new GridView(table); view.SetQuery(Grouped()); var rows = view.Rows; long builds = view.RefreshCount;
             for (int i = 0; i < 1000; i++) table.Apply([new(i, "Note", "tick" + i)]);

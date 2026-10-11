@@ -41,8 +41,13 @@ public sealed partial class MainPage
     {
         if (!DataGrid.CommitEdit()) return;
         Reload(100000); Scenario = "Live updates"; _liveTick = 0;
-        DataGrid.ShowBands = false;
-        DataGrid.SetQuery(DefaultQuery() with { Sorts = [new("Total", SortDirection.Descending)] });
+        using (DataGrid.BeginDataUpdate())
+        {
+            DataGrid.ShowBands = false;
+            foreach (string field in new[] { "Salesperson", "OrderDate", "UnitPrice", "Discount", "Progress", "Verified", "Trend" })
+                DataGrid.ColumnLayout!.SetVisible(field, false);
+            DataGrid.SetQuery(DefaultQuery() with { Sorts = [new("Total", SortDirection.Descending)] });
+        }
         SetMessage("Live updates ready: display edits retain sort/summary state. Batch edits refresh shaping once.");
     }
     private void ToggleLiveUpdates()

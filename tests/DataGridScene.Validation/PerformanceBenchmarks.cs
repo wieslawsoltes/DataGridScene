@@ -37,6 +37,14 @@ public static class PerformanceBenchmarks
         Measure("reset-1000000-uniform-row-heights", 10, () => { heights.Reset(1000000,28); _sink = heights.OffsetOf(999999) + heights.RowAt(12345); });
         var selection = new GridSelection { Mode = GridSelectionMode.Cells }; selection.SelectAll(view);
         Measure("read-count-300000-selected-cells", 1000, () => _sink = selection.SelectedCellCount);
+        var computed = new GridTable(new GridSchema([
+            new("Quantity", typeof(int)), new("Price", typeof(decimal)),
+            new("Total", typeof(decimal)) { ValueGetter = row => Math.Round((int)row[0]! * (decimal)row[1]!, 2) }
+        ]));
+        computed.AddRange(Enumerable.Range(0, 100000).Select(i => new GridRecord(i, new object?[] { i % 80 + 1, i % 1000 + 0.125m, null })));
+        using var computedView = new GridView(computed); computedView.SetQuery(new() { Sorts = [new("Total", SortDirection.Descending)] });
+        int quantity = 1;
+        Measure("reshape-100000-computed-sorted-rows", 3, () => { computed.Apply([new(0, "Quantity", ++quantity)]); _sink = computedView.Rows.Count; });
         return samples.AsReadOnly();
     }
 }
