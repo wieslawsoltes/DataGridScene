@@ -21,7 +21,7 @@ public static partial class DataSourceValidation
         if (query.EffectiveGroupSummaries.Count > 0 && query.GroupSummaries is not null || query.GroupSummarySorts.Count > 0 || query.GroupFooterDisplay != GroupFooterDisplayMode.Hidden) throw new NotSupportedException("The record-page contract does not represent group summaries or footers.");
         if (query.Groups.Count > 0) throw new NotSupportedException("The record-page contract does not represent server group rows.");
         if (query.Sorts.Count > 0 && !capabilities.HasFlag(DataCapabilities.Sort)) throw new NotSupportedException("This source does not support sorting.");
-        if (query.Filter is not null && !capabilities.HasFlag(DataCapabilities.Filter)) throw new NotSupportedException("This source does not support filtering.");
+        if (query.IsFilterEnabled && query.Filter is not null && !capabilities.HasFlag(DataCapabilities.Filter)) throw new NotSupportedException("This source does not support filtering.");
         if (query.Search.Length > 0 && !capabilities.HasFlag(DataCapabilities.Search)) throw new NotSupportedException("This source does not support search.");
         if (query.Summaries.Count > 0 && !capabilities.HasFlag(DataCapabilities.Summaries)) throw new NotSupportedException("This source does not support summaries.");
     }

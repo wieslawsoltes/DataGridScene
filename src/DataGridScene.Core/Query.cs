@@ -43,6 +43,8 @@ public sealed record GridQuery
     public IReadOnlyList<SummaryDescriptor> EffectiveGroupSummaries => GroupSummaries ?? Summaries;
     public GridFilter? Filter { get; init; }
     public string Search { get; init; } = string.Empty;
+    /// <summary>Retain the filter expression but suspend its effect. Search remains independent.</summary>
+    public bool IsFilterEnabled { get; init; } = true;
 }
 
 public sealed record GridGroup(string Key, string Field, object? Value, int Depth, IReadOnlyList<GridRecord> Records,
@@ -108,7 +110,7 @@ public sealed partial class GridView : IDisposable
         if (query.Groups.Select(s => s.Field.ToUpperInvariant()).Distinct().Count() != query.Groups.Count) throw new ArgumentException("Duplicate group fields.");
         foreach (var group in query.Groups) _ = schema[group.Field];
         foreach (var summary in query.Summaries) _ = schema[summary.Field];
-        var predicate = query.Filter?.Compile(schema);
+        var predicate = query.IsFilterEnabled ? query.Filter?.Compile(schema) : null;
         string[] terms = SearchTerms(query.Search);
         var rows = new List<GridRecord>(Table.Records.Count);
         foreach (var record in Table.Records)
