@@ -64,8 +64,11 @@ public sealed record FieldFilter(string Field, FilterOperator Operator, object? 
         }
         if (Operator == FilterOperator.In)
         {
-            var values = (Values ?? Array.Empty<object?>()).Select(ConvertLiteral).ToArray();
-            return record => values.Any(value => Compare(column.GetValue(record), value) == 0);
+            // Compile membership once and read a computed field only once per row.
+            // A sorted set respects arbitrary comparison equality without inventing a hash.
+            var values = new SortedSet<object?>((Values ?? Array.Empty<object?>()).Select(ConvertLiteral),
+                Comparer<object?>.Create(Compare));
+            return values.Count == 0 ? _ => false : record => values.Contains(column.GetValue(record));
         }
         object? lower = ConvertLiteral(Value);
         object? upper = Operator == FilterOperator.Between ? ConvertLiteral(Upper) : null;
