@@ -24,7 +24,7 @@ public static class SummaryGeometry
     private static IReadOnlyList<SummaryCell> Cells(GridFrame frame, IEnumerable<SummaryDescriptor> items,
         IReadOnlyDictionary<string, object?> values, double top, int rowIndex = -1)
     {
-        var slots = frame.Columns.Slots.ToDictionary(slot => slot.Field, StringComparer.OrdinalIgnoreCase);
+        var slots = frame.ColumnsByField;
         var lines = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var cells = new List<SummaryCell>();
         foreach (var item in items)
@@ -36,13 +36,18 @@ public static class SummaryGeometry
         }
         return cells.AsReadOnly();
     }
-    public static IReadOnlyList<SummaryCell> TotalCells(GridFrame frame) => Cells(frame, frame.View.Query.Summaries, frame.View.Summaries, frame.FooterTop + 5);
+    public static IReadOnlyList<SummaryCell> TotalCells(GridFrame frame)
+    {
+        if (frame.TryGetSummaryCells(-1, out var cached)) return cached;
+        return frame.CacheSummaryCells(-1, Cells(frame, frame.View.Query.Summaries, frame.View.Summaries, frame.FooterTop + 5));
+    }
     public static IReadOnlyList<SummaryCell> GroupCells(GridFrame frame, int rowIndex)
     {
+        if (frame.TryGetSummaryCells(rowIndex, out var cached)) return cached;
         var row = frame.View.Rows[rowIndex];
         if (row.Group is null || row.Kind == GridRowKind.Group && frame.View.Query.GroupSummaryDisplay != GroupSummaryDisplayMode.AlignByColumns) return Array.Empty<SummaryCell>();
         var items = frame.View.Query.EffectiveGroupSummaries.Where(item => row.Kind == GridRowKind.GroupFooter ? item.ShowInGroupFooter : item.ShowInGroupRow);
-        return Cells(frame, items, row.Group.Summaries, frame.RowBounds(rowIndex).Y + GroupLabelHeight + 4, rowIndex);
+        return frame.CacheSummaryCells(rowIndex, Cells(frame, items, row.Group.Summaries, frame.RowBounds(rowIndex).Y + GroupLabelHeight + 4, rowIndex));
     }
     public static IEnumerable<SummaryCell> VisibleCells(GridFrame frame)
     {

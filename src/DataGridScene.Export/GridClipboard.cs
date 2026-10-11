@@ -12,25 +12,43 @@ public static class GridClipboard
     {
         if (maximumCells < 1) throw new ArgumentOutOfRangeException(nameof(maximumCells));
         var columns = Resolve(view, fields);
-        var rows = view.Rows.Where(row => row.Kind == GridRowKind.Data).Select(row => row.Record!).ToArray();
+        // Locate only selected identities. Copying one row must not materialize an
+        // array for the entire data set just to discard all unselected records.
+        int[] indexes;
         if (selection.Mode == GridSelectionMode.Cells)
         {
-            int first = Array.FindIndex(rows, row => columns.Any(column => selection.ContainsCell(row.Id, column.Field)));
-            int last = Array.FindLastIndex(rows, row => columns.Any(column => selection.ContainsCell(row.Id, column.Field)));
-            if (first < 0) return string.Empty;
-            rows = rows[first..(last + 1)];
-            int left = Array.FindIndex(columns, column => rows.Any(row => selection.ContainsCell(row.Id, column.Field)));
-            int right = Array.FindLastIndex(columns, column => rows.Any(row => selection.ContainsCell(row.Id, column.Field)));
+            var columnIndexes = columns.Select((column, index) => (column.Field, index))
+                .ToDictionary(pair => pair.Field, pair => pair.index, StringComparer.OrdinalIgnoreCase);
+            int top = int.MaxValue, bottom = -1, left = int.MaxValue, right = -1;
+            foreach (var cell in selection.EnumerateCells())
+            {
+                if (!columnIndexes.TryGetValue(cell.Field, out int column)) continue;
+                int row = view.IndexOfRecord(cell.RecordId);
+                if (row < 0) continue;
+                top = Math.Min(top, row); bottom = Math.Max(bottom, row);
+                left = Math.Min(left, column); right = Math.Max(right, column);
+            }
+            if (bottom < 0) return string.Empty;
             columns = columns[left..(right + 1)];
+            var rectangle = new List<int>();
+            for (int i = top; i <= bottom; i++)
+                if (view.Rows[i].Kind == GridRowKind.Data)
+                {
+                    if (((long)rectangle.Count + 1 + (includeHeaders ? 1 : 0)) * columns.Length > maximumCells)
+                        throw new InvalidOperationException($"The clipboard operation exceeds {maximumCells:N0} cells. Use an export for larger selections.");
+                    rectangle.Add(i);
+                }
+            indexes = rectangle.ToArray();
         }
-        else rows = rows.Where(row => selection.Contains(row.Id)).ToArray();
-        if ((long)(rows.Length + (includeHeaders ? 1 : 0)) * columns.Length > maximumCells)
+        else indexes = selection.EnumerateSelectedIds().Select(view.IndexOfRecord).Where(index => index >= 0).Order().ToArray();
+        if (((long)indexes.Length + (includeHeaders ? 1 : 0)) * columns.Length > maximumCells)
             throw new InvalidOperationException($"The clipboard operation exceeds {maximumCells:N0} cells. Use an export for larger selections.");
         var output = new StringBuilder();
         void Write(IEnumerable<string> values) => output.AppendJoin('\t', values.Select(value => DelimitedText.Escape(value, '\t'))).Append("\r\n");
         if (includeHeaders) Write(columns.Select(column => column.Caption));
-        foreach (var row in rows)
+        foreach (int index in indexes)
         {
+            var row = view.Rows[index].Record!;
             Write(columns.Select(column =>
             {
                 if (!selection.ContainsCell(row.Id, column.Field)) return "";
@@ -65,9 +83,13 @@ public static class GridClipboard
         }
         if (input.Count == 1 && input[0].Count == 1 && fillSelectedCells && selection.Mode == GridSelectionMode.Cells && selection.SelectedCellCount > 1)
         {
-            foreach (var row in view.Rows.Where(row => row.Kind == GridRowKind.Data))
-                foreach (var column in columns)
-                    if (selection.ContainsCell(row.Record!.Id, column.Field)) Add(new(row.Record.Id, column.Field, input[0][0]));
+            var fieldsByIndex = columns.Select((column, index) => (column.Field, index))
+                .ToDictionary(pair => pair.Field, pair => pair.index, StringComparer.OrdinalIgnoreCase);
+            var selected = selection.EnumerateCells()
+                .Where(cell => fieldsByIndex.ContainsKey(cell.Field))
+                .Select(cell => (Cell: cell, Row: view.IndexOfRecord(cell.RecordId)))
+                .Where(item => item.Row >= 0).OrderBy(item => item.Row).ThenBy(item => fieldsByIndex[item.Cell.Field]);
+            foreach (var item in selected) Add(new(item.Cell.RecordId, item.Cell.Field, input[0][0]));
         }
         else
         {

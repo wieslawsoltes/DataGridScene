@@ -34,6 +34,23 @@ public sealed class GridFrame
     public RowHeightIndex Heights { get; }
     public GridMetrics Metrics { get; }
     public ColumnViewport Columns { get; }
+    internal IReadOnlyDictionary<string, ColumnSlot> ColumnsByField { get; }
+    private readonly Dictionary<int, IReadOnlyList<SummaryCell>> _summaryCells = [];
+    private long _summaryRowsRevision = -1;
+    public long SummaryGeometryBuildCount { get; private set; }
+    internal bool TryGetSummaryCells(int rowIndex, out IReadOnlyList<SummaryCell> cells)
+    {
+        if (_summaryRowsRevision != View.RowsRevision)
+        { _summaryCells.Clear(); _summaryRowsRevision = View.RowsRevision; }
+        return _summaryCells.TryGetValue(rowIndex, out cells!);
+    }
+    internal IReadOnlyList<SummaryCell> CacheSummaryCells(int rowIndex, IReadOnlyList<SummaryCell> cells)
+    {
+        // Only retain the viewport, never an entry per row of a large data set.
+        if (rowIndex < 0 || rowIndex >= VisibleRows.Start && rowIndex < VisibleRows.EndExclusive)
+        { _summaryCells[rowIndex] = cells; SummaryGeometryBuildCount++; }
+        return cells;
+    }
     public IReadOnlyList<BandSlot> Bands { get; }
     public VisibleRange VisibleRows { get; }
     public IReadOnlyList<GroupChip> GroupChips { get; }
@@ -49,6 +66,13 @@ public sealed class GridFrame
 
     public GridFrame(GridView view, GridLayout layout, GridSelection selection, RowHeightIndex heights, GridMetrics metrics, double width, double height, double offsetX, double offsetY)
     {
+        ArgumentNullException.ThrowIfNull(view); ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(selection); ArgumentNullException.ThrowIfNull(heights); ArgumentNullException.ThrowIfNull(metrics);
+        if (!double.IsFinite(width) || !double.IsFinite(height) || width < 0 || height < 0 ||
+            !double.IsFinite(offsetX) || !double.IsFinite(offsetY)) throw new ArgumentOutOfRangeException(nameof(width));
+        if (heights.Count != view.Rows.Count) throw new ArgumentException("Row geometry must match the current view.", nameof(heights));
+        foreach (double size in new ReadOnlySpan<double>([metrics.RowHeight, metrics.GroupPanelHeight, metrics.BandHeight, metrics.HeaderHeight, metrics.FilterHeight, metrics.FooterHeight]))
+            if (!double.IsFinite(size) || size <= 0) throw new ArgumentOutOfRangeException(nameof(metrics));
         View = view; Layout = layout; Selection = selection; Heights = heights; Metrics = metrics;
         Width = Math.Max(0, width); Height = Math.Max(0, height);
         BandTop = metrics.ShowGroupPanel ? metrics.GroupPanelHeight : 0;
@@ -58,6 +82,7 @@ public sealed class GridFrame
         FooterTop = Math.Max(BodyTop, Height - SummaryGeometry.TotalHeight(view.Query, metrics.FooterHeight));
         OffsetY = Math.Clamp(offsetY, 0, Math.Max(0, heights.TotalHeight - BodyHeight));
         Columns = layout.Compute(Width, offsetX);
+        ColumnsByField = Columns.Slots.ToDictionary(column => column.Field, StringComparer.OrdinalIgnoreCase);
         Bands = metrics.ShowBands ? layout.ComputeBands(Width, Columns) : Array.Empty<BandSlot>();
         VisibleRows = heights.Visible(OffsetY, BodyHeight, 1);
         var chips = new List<GroupChip>(); double x = 12;
@@ -72,7 +97,7 @@ public sealed class GridFrame
     public RectD RowBounds(int rowIndex) => new(0, BodyTop + Heights.OffsetOf(rowIndex) - OffsetY, Width, Heights[rowIndex]);
     public RectD CellBounds(int rowIndex, string field)
     {
-        var slot = Columns.Slots.FirstOrDefault(column => column.Field.Equals(field, StringComparison.OrdinalIgnoreCase));
+        ColumnsByField.TryGetValue(field, out var slot);
         if (slot is null || rowIndex < 0 || rowIndex >= Heights.Count) return default;
         var row = RowBounds(rowIndex);
         return new(slot.ClipLeft, row.Y, slot.ClipRight - slot.ClipLeft, row.Height);

@@ -34,7 +34,13 @@ jobs:
           cp -r "$root/sdk/$sdk/Roslyn/bincore/." kit/compiler/
           cp -r "$root/packs/Microsoft.NETCore.App.Ref/$refs/ref/net10.0/." kit/refs/
           cp "$root/LICENSE.txt" "$root/ThirdPartyNotices.txt" kit/
-          find samples/DataGridScene.Demo/bin/Release/net10.0-desktop -type f \( -name '*.dll' -o -name 'libSkiaSharp.so' -o -name 'libHarfBuzzSharp.so' \) -exec cp -n '{}' kit/deps/ \;
+          find samples/DataGridScene.Demo/bin/Release/net10.0-desktop -type f -name '*.dll' ! -path '*/runtimes/*' -exec cp -n '{}' kit/deps/ \;
+          # Flattening every RID used to pick arbitrary (e.g. LoongArch) native
+          # binaries. The Ubuntu kit host is x64; retain exactly those assets.
+          for name in libSkiaSharp.so libHarfBuzzSharp.so; do
+            path="$(find tests/DataGridScene.Tests/bin/Release -path '*/linux-x64/native/'"$name" -print -quit)"
+            test -n "$path" && cp "$path" kit/deps/
+          done
           printf '%s\n' "commit=$GITHUB_SHA" "sdk=$sdk" "runtime=$runtime" > kit/provenance.txt
           tar -czf offline-validation-kit.tar.gz kit
           sha256sum offline-validation-kit.tar.gz > SHA256SUMS.txt

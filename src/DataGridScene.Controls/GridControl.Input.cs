@@ -73,9 +73,15 @@ public sealed partial class GridControl
         if (Frame is null || View is null || ColumnLayout is null) return;
         var pointer = args.GetCurrentPoint(_surface);
         if (!pointer.Properties.IsLeftButtonPressed && pointer.PointerDevice.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Mouse) return;
+        var point = pointer.Position;
+        // A rapid third press may still target the captured surface before the native
+        // editor's input host is attached. It is inside the current editor, not an
+        // outside click: do not commit and immediately close the just-opened editor.
+        var initialHit = Frame.HitTest(point.X, point.Y);
+        if (RefocusEditor(initialHit)) { args.Handled = true; return; }
         if (!CommitEdit()) { args.Handled = true; return; }
         Focus(FocusState.Pointer);
-        var point = pointer.Position; var hit = Frame.HitTest(point.X, point.Y);
+        var hit = Frame.HitTest(point.X, point.Y);
         if (TryBandPressed(hit, point, args)) { args.Handled = true; return; }
         _validDoubleTap = false;
         if (hit.Region != HitRegion.DataCell) { _previousCell = null; _previousTable = null; }

@@ -19,10 +19,21 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Core, data, layout and export conformance
         run: dotnet run --project tests/DataGridScene.Tests -c Release
+      - name: Record non-gating performance measurements
+        run: dotnet run --project tests/DataGridScene.Tests -c Release --no-build -- --benchmark
       - name: Build and package independent libraries
         run: |
           for project in Core Data Layout Export Rendering.Skia; do
             dotnet pack src/DataGridScene.$project -c Release -o artifacts/packages
+          done
+      - name: Retain Linux raster-test runtime dependencies
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/native-validation
+          for name in libSkiaSharp.so libHarfBuzzSharp.so; do
+            path="$(find tests/DataGridScene.Tests/bin/Release -path '*/linux-x64/native/'"$name" -print -quit)"
+            test -n "$path" && cp "$path" artifacts/native-validation/
           done
       - name: Source archive
         if: always()

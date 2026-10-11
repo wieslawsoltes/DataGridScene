@@ -43,7 +43,7 @@ public sealed partial class GridControl
         RequireView();
         if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
         // Do not clear base criteria or auto-filter text as SetQuery would.
-        View!.SetQuery(View.Query with
+        View!.SetQuery(View.RequestedQuery with
         {
             Summaries = configuration.Summaries, GroupSummaries = configuration.GroupSummaries,
             GroupSummarySorts = configuration.GroupSummarySorts,
@@ -74,9 +74,9 @@ public sealed partial class GridControl
     public void SortGroupBySummary(string groupField, string? summaryKey, SortDirection direction = SortDirection.Ascending)
     {
         RequireView(); if (!CommitEdit()) return;
-        var sorts = View!.Query.GroupSummarySorts.Where(sort => !sort.Field.Equals(groupField, StringComparison.OrdinalIgnoreCase)).ToList();
+        var sorts = View!.RequestedQuery.GroupSummarySorts.Where(sort => !sort.Field.Equals(groupField, StringComparison.OrdinalIgnoreCase)).ToList();
         if (summaryKey is not null) sorts.Add(new(groupField, summaryKey, direction));
-        View.SetQuery(View.Query with { GroupSummarySorts = sorts }); ClearError();
+        View.SetQuery(View.RequestedQuery with { GroupSummarySorts = sorts }); ClearError();
     }
     private bool TrySummaryContext(GridHit hit, Point point)
     {

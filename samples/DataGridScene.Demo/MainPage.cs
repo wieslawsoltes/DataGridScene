@@ -57,7 +57,7 @@ public sealed partial class MainPage : Page
         var statusBar = new Border { Background = Brush("#f3f3f3"), BorderThickness = new Thickness(0, 1, 0, 0), BorderBrush = Brush("#dedede"), Padding = new Thickness(14, 0, 14, 0), Child = _status };
         Grid.SetRow(statusBar, 3); Grid.SetColumnSpan(statusBar, 3); _shell.Children.Add(statusBar); Content = _shell;
         DataGrid.DetailProvider = OrderData.Details;
-        InitializeSummaryUI();
+        InitializeSummaryUI(); InitializePerformanceUI();
         DataGrid.StateChanged += (_, _) => RefreshStatus();
         DataGrid.Error += (_, message) => { Message = message; RefreshStatus(); };
         DataGrid.SearchRequested += (_, _) => _search.Focus(FocusState.Keyboard);
@@ -198,6 +198,7 @@ public sealed partial class MainPage : Page
     private GridQuery DefaultQuery() => new() { Summaries = [new("OrderID", SummaryKind.Count), new("Quantity", SummaryKind.Sum), new("Total", SummaryKind.Sum)] };
     public void Reload(int count)
     {
+        StopLiveUpdates();
         if (!DataGrid.CommitEdit()) return;
         _searchTimer.Stop();
         _loading = true; Ready = false;
@@ -214,6 +215,7 @@ public sealed partial class MainPage : Page
     }
     public void ApplyScenario(string name)
     {
+        StopLiveUpdates();
         if (!DataGrid.CommitEdit()) return;
         _searchTimer.Stop();
         Scenario = name; Message = null;
@@ -301,7 +303,7 @@ public sealed partial class MainPage : Page
     }
     private async void RunValidation()
     {
-        try { var report = await DataGridScene.Validation.SummaryValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
+        try { var report = await DataGridScene.Validation.UpdateValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
         catch (Exception error) { SetMessage(error.Message); }
     }
     public void Export(string format)
@@ -328,7 +330,7 @@ public sealed partial class MainPage : Page
     private void RefreshMetrics()
     {
         var renderer = DataGrid.Renderer;
-        string text = $"Skia / HarfBuzz\n{renderer.RowsDrawn:N0} visible rows\n{renderer.CellsDrawn:N0} painted cells\n{renderer.CachedTextRuns:N0} cached text runs\n{renderer.LastDrawMilliseconds:F2} ms last CPU paint\nHardware depends on host";
+        string text = $"Skia / HarfBuzz\n{renderer.RowsDrawn:N0} visible rows\n{renderer.CellsDrawn:N0} painted cells\n{renderer.CachedTextRuns:N0} cached text runs\n{renderer.LastDrawMilliseconds:F2} ms last CPU paint\nHardware depends on host\n{DataGrid.View?.RefreshCount:N0} shaping refreshes\n{DataGrid.View?.ValueUpdateCount:N0} values-only updates\nHeights: {DataGrid.HeightIndex.StorageMode}\n{DataGrid.View?.LastRefreshMilliseconds:F2} ms last shaping";
         if (_metrics.Text != text) _metrics.Text = text;
     }
     public IReadOnlyDictionary<string, RectD> ActionBounds()

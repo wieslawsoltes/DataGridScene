@@ -27,6 +27,7 @@ public sealed partial class GridCanvasRenderer : IDisposable
     /// <summary>Retains an independent copy; the caller may dispose its typeface immediately.</summary>
     public void SetTypeface(SKTypeface typeface, float size = 13)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(typeface);
         var replacement = new ShapedTextCache(size, typeface: typeface);
         _text.Dispose(); _text = replacement;
@@ -63,14 +64,27 @@ public sealed partial class GridCanvasRenderer : IDisposable
         if (mixed) Line(canvas, x - 3, y, x + 3, y, SKColors.White, 1.5f);
         else if (selected) { Line(canvas, x - 3, y, x - 1, y + 2, SKColors.White, 1.5f); Line(canvas, x - 1, y + 2, x + 4, y - 3, SKColors.White, 1.5f); }
     }
+    private bool _disposed;
     public void Draw(SKCanvas canvas, GridFrame frame)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(canvas); ArgumentNullException.ThrowIfNull(frame);
         var watch = Stopwatch.StartNew(); CellsDrawn = RowsDrawn = SummaryCellsDrawn = 0; DrawCount++;
-        canvas.Save(); canvas.ClipRect(new SKRect(0, 0, (float)frame.Width, (float)frame.Height));
-        Fill(canvas, 0, 0, frame.Width, frame.Height, Palette.Background);
-        DrawBody(canvas, frame); DrawHeaders(canvas, frame); DrawFooter(canvas, frame);
-        if (DragMarkerX is double marker) Line(canvas, marker, frame.HeaderTop, marker, frame.FooterTop, Palette.Accent, 2);
-        canvas.Restore(); LastDrawMilliseconds = watch.Elapsed.TotalMilliseconds;
+        int saved = canvas.SaveCount;
+        canvas.Save();
+        try
+        {
+            canvas.ClipRect(new SKRect(0, 0, (float)frame.Width, (float)frame.Height));
+            Fill(canvas, 0, 0, frame.Width, frame.Height, Palette.Background);
+            DrawBody(canvas, frame); DrawHeaders(canvas, frame); DrawFooter(canvas, frame);
+            if (DragMarkerX is double marker) Line(canvas, marker, frame.HeaderTop, marker, frame.FooterTop, Palette.Accent, 2);
+        }
+        finally
+        {
+            // Application getters, styles and detail providers can throw under nested
+            // clips. Restore the caller's entire stack, not just one saved level.
+            canvas.RestoreToCount(saved); LastDrawMilliseconds = watch.Elapsed.TotalMilliseconds;
+        }
     }
     private void DrawHeaders(SKCanvas canvas, GridFrame frame)
     {
@@ -237,5 +251,9 @@ public sealed partial class GridCanvasRenderer : IDisposable
         }
         Line(canvas, 0, bounds.Bottom - 0.5, bounds.Width, bounds.Bottom - 0.5, Palette.Line);
     }
-    public void Dispose() { _text.Dispose(); _fill.Dispose(); _stroke.Dispose(); _textPaint.Dispose(); }
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true; _text.Dispose(); _fill.Dispose(); _stroke.Dispose(); _textPaint.Dispose();
+    }
 }
