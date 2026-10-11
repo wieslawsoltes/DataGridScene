@@ -68,6 +68,25 @@ try {
     assert.deepEqual(totals, [...totals].sort((a,b) => b-a));
     await page.screenshot({ path: path.join(directory, 'group-summaries.png') });
   });
+  await test('summary.navigation-targets-stable-across-font-loading', async () => {
+    // Keep actual pointer input and assert the layout itself stays stable. No retry
+    // of a wrong navigation click and no diagnostic call to activate the scenario.
+    const initial = await snapshot();
+    const targets = Object.fromEntries(Object.entries(initial.buttons).filter(([key]) => key.startsWith('scenario-')));
+    for (const rect of Object.values(targets)) assert.equal(rect.height, 40);
+    await page.waitForTimeout(400);
+    const settled = await snapshot();
+    for (const [key, rect] of Object.entries(targets)) {
+      assert.equal(settled.buttons[key].y, rect.y, key + ' moved after becoming interactive');
+      assert.equal(settled.buttons[key].height, rect.height);
+    }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => globalThis.dataGridScene?.ready && dataGridScene.snapshot().ready && dataGridScene.snapshot().rendering.drawCount > 0);
+      await click('scenario-Group summaries');
+      await waitFor(s => s.scenario === 'Group summaries' && s.groupFooterCount === 18);
+    }
+  });
   await test('summary.aligned-cells-share-column-geometry', async () => {
     const state = await snapshot();
     for (const cell of state.frame.summaryCells) {
