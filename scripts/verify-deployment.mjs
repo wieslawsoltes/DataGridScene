@@ -107,6 +107,31 @@ try {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.screenshot({ path: path.join(output, 'deployed-live-updates.png') });
   report.checks.push('public-live-update-without-reshaping');
+  // Validate the new public popup using actual pointer input, without applying
+  // a diagnostic filter command in place of the native checked list.
+  await page.evaluate(() => dataGridScene.command('reset', { count: 1000 }));
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  state = await page.evaluate(() => dataGridScene.snapshot());
+  const company = state.frame.columns.find(column => column.field === 'Company');
+  await page.mouse.click(state.origin.x + company.x + company.width - 12, state.origin.y + state.frame.headerTop + 17);
+  await page.waitForFunction(() => dataGridScene.snapshot().columnFilter?.actions.apply);
+  async function clickValueAction(name) {
+    const rect = await page.evaluate(name => dataGridScene.snapshot().columnFilter.actions[name], name);
+    assert.ok(rect, 'Realized filter action: ' + name);
+    await page.mouse.click(rect.x + Math.min(60, rect.width / 2), rect.y + rect.height / 2);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  }
+  await clickValueAction('none');
+  const index = await page.evaluate(() => dataGridScene.snapshot().columnFilter.items.findIndex(item => item.label === 'Alpine Ski House'));
+  await clickValueAction('item-' + index);
+  await page.screenshot({ path: path.join(output, 'deployed-checked-filter.png') });
+  await clickValueAction('apply');
+  await page.waitForFunction(() => {
+    const state = dataGridScene.snapshot();
+    return !state.columnFilter && state.filteredCount > 0 && state.filteredCount < 1000 &&
+      state.records.every(row => row.values.Company === 'Alpine Ski House');
+  });
+  report.checks.push('public-checked-filter-pointer-apply');
   assert.deepEqual(report.pageErrors, []);
   report.checks.push('no-unhandled-page-errors');
   report.passed = true;

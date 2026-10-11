@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup Condition="'$(BaselineCore)' == ''"><ProjectReference Include="../../src/DataGridScene.Core/DataGridScene.Core.csproj" /></ItemGroup>
+  <ItemGroup Condition="'$(BaselineCore)' != ''"><Reference Include="DataGridScene.Core"><HintPath>$(BaselineCore)</HintPath></Reference></ItemGroup>
+</Project>

@@ -2,7 +2,7 @@
 
 ## Reproducible layers
 
-The executable `tests/DataGridScene.Tests` runs `UpdateValidationSuite`, which includes the baseline and selection suites. Its 292 contracts cover schema, data shaping, editing, clipboard/export, paging, variable-height indexing, bands and workspace state. It writes `artifacts/core-validation.json` and exits nonzero on any failed assertion.
+The executable `tests/DataGridScene.Tests` runs `ValueFilterValidation`, which includes the baseline and selection suites. Its 313 contracts cover schema, data shaping, editing, clipboard/export, paging, variable-height indexing, bands and workspace state. It writes `artifacts/core-validation.json` and exits nonzero on any failed assertion.
 
 The actual Uno WebAssembly application exposes the same suite through a sample-only diagnostic bridge. `tests/browser/run.mjs` invokes it in the browser runtime and also performs 32 interaction checks. `tests/browser/summaries.mjs` performs 20 summary, context-menu and staged-editor interaction checks. `tests/browser/workspace.mjs` performs 16 additional band/workspace checks. Real browser pointer, keyboard, clipboard and native text input are used; diagnostic commands supply fixtures/configuration and snapshots, not synthetic success results.
 
@@ -10,9 +10,11 @@ Clipboard tests first write an unrelated sentinel, issue Ctrl+C, and poll until 
 
 `tests/browser/performance.mjs` adds 11 live-update and bounded-work checks, including real cell edits, start/stop controls, wheel scrolling and a batch of 1,000 edits.
 
-`tests/browser/review.mjs` adds eight checks for cached frames, edit preservation, read-only transitions and real control APIs. Its control-API check invokes ten individual Uno contracts; these instantiate the controls on the UI thread rather than simulating their behavior. The shared 292-contract suite also includes raster stack restoration and 22 bounded page-scheduling checks.
+`tests/browser/review.mjs` adds eight checks for cached frames, edit preservation, read-only transitions and real control APIs. Its control-API check invokes ten individual Uno contracts; these instantiate the controls on the UI thread rather than simulating their behavior. The shared 313-contract suite also includes raster stack restoration and 22 bounded page-scheduling checks.
 
-`npm run test:browser` runs all five harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
+`tests/browser/value-filters.mjs` adds thirteen checked-filter scenarios, including native ListView virtualization on a 100,000-record field, search across the value limit, checked selection, exclusion, condition entry and persistence.
+
+`npm run test:browser` runs all six harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
 
 ## CI artifacts
 
@@ -29,7 +31,7 @@ The desktop CI job builds the shared Uno desktop target. It does not currently r
 
 ## Pages
 
-After successful main validation, Publish Pages downloads that run's browser artifact rather than rebuilding different sources. Its deployment verification compares the public `build.json` commit, starts the actual WASM app in Chromium, performs a native edit and undo, opens the nested-band and group-summary scenarios, opens/cancels the summary editor, and verifies a display-only update on 100,000 rows without reshaping. Verification reports and a screenshot are retained as `deployed-site-verification`.
+After successful main validation, Publish Pages downloads that run's browser artifact rather than rebuilding different sources. Its deployment verification compares the public `build.json` commit, starts the actual WASM app in Chromium, performs a native edit and undo, opens the nested-band and group-summary scenarios, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input. Verification reports and a screenshot are retained as `deployed-site-verification`.
 
 A failed deployment verification does not undo publication; it marks the deployment workflow unsuccessful and must be investigated before claiming the public site is verified.
 

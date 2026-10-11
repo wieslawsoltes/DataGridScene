@@ -59,11 +59,15 @@ Display-only edits reuse shaped rows and geometry when validated dependencies pr
 
 Viewport frames and summary geometry are cached across display-only updates. The page cache separately bounds completed pages, pending requests and active fetches, and rejects mixed revisions. The correctness review also fixes rapid-click editing, untouched null/timestamp commits and visual-filter semantics. See [review findings, paging APIs and measured workloads](docs/review.md).
 
+## Checked value filters
+
+The column funnel now supports a searchable, virtualized checklist with inclusion/exclusion, all/none, staged Apply/Cancel, and retained choices across searches. Typed selections persist in workspace version 3. The condition entry remains available. Membership predicates use an index and read each field once per tested row. See [APIs, limits and measured results](docs/value-filters.md).
+
 ## Validation and deployment
 
-The shared C# suite currently contains **292 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace, 20 summary, 11 live-update/performance and 8 review checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The review harness also runs ten real Uno control API contracts. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
+The shared C# suite currently contains **313 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace, 20 summary, 11 live-update/performance, 8 review and 13 checked-filter checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The review harness also runs ten real Uno control API contracts. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
 
-CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell, opens the nested-band and group-summary samples, opens/cancels the summary editor, and verifies a display-only update on 100,000 rows without reshaping.
+CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell, opens the nested-band and group-summary samples, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input.
 
 The renderer draws into Uno's Skia canvas. Hardware acceleration depends on the host and graphics driver. Hosted browser tests use ANGLE/SwiftShader, so their timings are **software-backend correctness evidence, not hardware GPU benchmarks**. The sample displays CPU paint time, not end-to-end frame or input latency.
 

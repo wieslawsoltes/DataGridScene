@@ -86,6 +86,20 @@ try{
     await reset();await command('fixture-value',{id:10001,field:'City',value:null});await open('City');await click('none');await choose('(Blanks)');await click('apply');
     const state=await waitFor(s=>!s.columnFilter&&s.filteredCount===1);assert.equal(state.records[0].values.City,null);
   });
+  await test('values.untouched-auto-filter-preserves-checked',async()=>{
+    await reset();await command('value-filter',{field:'Company',filter:{values:['Alpine Ski House'],exclude:false}});
+    const before=await snapshot(),slot=before.frame.columns.find(c=>c.field==='Company');
+    await page.mouse.click(before.origin.x+slot.clipLeft+22,before.origin.y+before.frame.filterTop+14);
+    await waitFor(s=>s.isEditorReady);await page.waitForFunction(()=>document.activeElement?.id==='uno-input');
+    await page.keyboard.press('Enter');const after=await waitFor(s=>!s.isEditing);
+    assert.deepEqual(after.valueFilters,before.valueFilters);assert.equal(after.filteredCount,before.filteredCount);
+    assert.equal(after.performance.refreshCount,before.performance.refreshCount);
+  });
+  await test('values.invalid-selection-does-not-mutate-live-query',async()=>{
+    const before=await snapshot();
+    const result=await page.evaluate(()=>dataGridScene.command('value-filter',{field:'Quantity',filter:{values:['not a number']}}));
+    assert.equal(result.ok,false);const after=await snapshot();assert.deepEqual(after.query,before.query);assert.deepEqual(after.valueFilters,before.valueFilters);
+  });
   await test('values.no-unhandled-errors',async()=>assert.deepEqual(errors,[]));
 }catch(error){results.push({name:'values.startup',passed:false,error:String(error.stack??error)});}
 finally{const report={commit:process.env.GITHUB_SHA??null,passed:results.length>0&&results.every(r=>r.passed),passedCount:results.filter(r=>r.passed).length,results,errors,browser:browser.version()};await writeFile(path.join(output,'value-filter-validation.json'),JSON.stringify(report,null,2));await context.tracing.stop({path:path.join(output,'trace.zip')}).catch(()=>{});await browser.close();if(server)await new Promise(r=>server.close(r));console.log(`${report.passedCount}/${results.length} checked-filter browser checks passed`);if(!report.passed)process.exitCode=1;}

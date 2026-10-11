@@ -101,9 +101,9 @@ public sealed partial class GridControl
         try
         {
             object? value = EditorValue();
-            if (!_filterEditor && Equals(value, _initialEditorValue))
+            if (Equals(value, _initialEditorValue))
             {
-                // An untouched null/scalar editor is not a request to normalize or
+                // An untouched editor is not a request to clear a checked filter, normalize or
                 // replace the stored value. Preserve nulls, precision and versions.
                 _transaction?.Cancel(); CloseEditor(); ClearError(); return true;
             }

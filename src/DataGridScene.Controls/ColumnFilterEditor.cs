@@ -12,7 +12,7 @@ namespace DataGridScene.Controls;
 public sealed class ColumnFilterEditor : UserControl
 {
     private readonly GridTable _table;
-    private readonly ColumnValueSelection _selection;
+    private ColumnValueSelection _selection;
     private readonly TextBox _search = new() { PlaceholderText = "Search values…", MinWidth = 0 };
     private readonly TextBox _condition = new() { PlaceholderText = "Condition: contains, =value, >=value…", MinWidth = 0 };
     private readonly ListView _list = new() { SelectionMode = ListViewSelectionMode.Multiple, IsMultiSelectCheckBoxEnabled = true, Height = 240 };
@@ -61,7 +61,11 @@ public sealed class ColumnFilterEditor : UserControl
         _search.TextChanged += (_, _) => { _timer.Stop(); _timer.Start(); };
         _timer.Tick += (_, _) => { _timer.Stop(); Run(Refresh); };
         Unloaded += (_, _) => _timer.Stop();
-        _visible.Click += (_, _) => Run(() => { _selection.SetSelected(Results.Items.Select(item => item.Value), _visible.IsChecked == true); Sync(); });
+        _visible.Click += (_, _) =>
+        {
+            Run(() => _selection.SetSelected(Results.Items.Select(item => item.Value), _visible.IsChecked == true));
+            Sync(); // Restore the tri-state indicator even when the selection limit rejects a change.
+        };
         _list.SelectionChanged += (_, args) =>
         {
             if (_sync) return;
@@ -69,8 +73,10 @@ public sealed class ColumnFilterEditor : UserControl
             {
                 // Native selection events are small for a pointer toggle; bulk state changes
                 // are suppressed by Sync and use the atomic core selection API.
-                _selection.SetSelected(args.RemovedItems.Cast<GridDistinctValue>().Select(item => item.Value), false);
-                _selection.SetSelected(args.AddedItems.Cast<GridDistinctValue>().Select(item => item.Value), true);
+                var pending = new ColumnValueSelection(_table.Schema, Field, _selection.Capture());
+                pending.SetSelected(args.RemovedItems.Cast<GridDistinctValue>().Select(item => item.Value), false);
+                pending.SetSelected(args.AddedItems.Cast<GridDistinctValue>().Select(item => item.Value), true);
+                _selection = pending;
             });
             Sync();
         };
