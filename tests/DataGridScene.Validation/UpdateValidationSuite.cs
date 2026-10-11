@@ -281,7 +281,7 @@ public static class UpdateValidationSuite
             for (int i = 0; i < 1000; i++) table.Apply([new(i, "Note", "tick" + i)]);
             Check(ReferenceEquals(rows,view.Rows) && view.RefreshCount == builds && view.ValueUpdateCount == 1000);
         });
-        return ReviewValidationSuite.Append(new(results.AsReadOnly(), report.Milliseconds + watch.Elapsed.TotalMilliseconds), stress);
+        return await PageSchedulingValidation.AppendAsync(ReviewValidationSuite.Append(new(results.AsReadOnly(), report.Milliseconds + watch.Elapsed.TotalMilliseconds), stress));
     }
     private sealed record ApplicationFilter : GridFilter
     { public override Func<GridRecord, bool> Compile(GridSchema schema) => row => !Equals(row[2], "hide"); }

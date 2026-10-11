@@ -153,7 +153,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     }
     private void RebuildRows()
     {
-        if (_dataUpdateDepth > 0) { _geometryPending = true; return; }
+        if (_dataUpdateDepth > 0) { _rowGeometryPending = true; return; }
         RowGeometryBuildCount++;
         HeightIndex.Reset(View?.Rows.Count ?? 0, _metrics.RowHeight);
         if (View is not null && (View.HasNonDataRows || _rowHeights.Count > 0))
@@ -194,7 +194,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     }
     private void UpdateRowHeight(string key)
     {
-        if (_dataUpdateDepth > 0) { _geometryPending = true; return; }
+        if (_dataUpdateDepth > 0) { _rowGeometryPending = true; return; }
         int index = View?.IndexOfRow(key) ?? -1;
         if (index >= 0) HeightIndex.SetHeight(index, EffectiveRowHeight(View!.Rows[index].Kind, _rowHeights.TryGetValue(key, out var custom) ? custom : null));
         UpdateGeometry(); Changed();

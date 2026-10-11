@@ -28,11 +28,15 @@ public sealed partial class GridControl
 
     public void BeginEdit(long recordId, string field)
     {
-        RequireView(); if (IsReadOnly || !CommitEdit()) return;
+        RequireView();
+        if (_editor is not null && !_filterEditor && _editRecordId == recordId &&
+            string.Equals(_editField, field, StringComparison.OrdinalIgnoreCase))
+        { _editor.Focus(FocusState.Programmatic); return; }
+        if (IsReadOnly || !CommitEdit()) return;
         var column = Table!.Schema[field]; if (column.IsReadOnly) return;
         var record = Table[recordId];
         Selection.Select(View!, new(recordId, field)); EnsureVisible(new(recordId, field));
-        _editRecordId = recordId; _editField = field; _filterEditor = false; _transaction = History!.Begin(recordId);
+        _editRecordId = recordId; _editField = column.Field; _filterEditor = false; _transaction = History!.Begin(recordId);
         if (column.Choices.Count > 0)
         {
             _editor = new ComboBox { ItemsSource = column.Choices, SelectedItem = Convert.ToString(column.GetValue(record), Table.Schema.Culture), HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 0 };

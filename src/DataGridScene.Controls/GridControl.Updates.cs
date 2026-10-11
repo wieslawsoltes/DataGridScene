@@ -5,7 +5,7 @@ namespace DataGridScene.Controls;
 public sealed partial class GridControl
 {
     private int _dataUpdateDepth;
-    private bool _geometryPending, _statePending, _redrawPending;
+    private bool _rowGeometryPending, _geometryPending, _statePending, _redrawPending;
     private GridFilter? _batchCriteria;
     private Dictionary<string, string>? _batchFilters;
     /// <summary>Coalesce query/data shaping and control notifications. Dispose on the UI thread.
@@ -48,11 +48,16 @@ public sealed partial class GridControl
             {
                 if (--control._dataUpdateDepth == 0 && !control._disposed)
                 {
-                    bool geometry = control._geometryPending, state = control._statePending, redraw = control._redrawPending;
-                    control._geometryPending = control._statePending = control._redrawPending = false;
+                    bool rows = control._rowGeometryPending, geometry = control._geometryPending, state = control._statePending, redraw = control._redrawPending;
+                    control._rowGeometryPending = control._geometryPending = control._statePending = control._redrawPending = false;
                     control._batchFilters = null; control._batchCriteria = null;
-                    if (geometry) control.RebuildRows();
-                    else { if (redraw) control.Redraw(); if (state) control.Changed(); }
+                    if (rows) control.RebuildRows();
+                    else
+                    {
+                        if (geometry) control.UpdateGeometry();
+                        else if (redraw) control.Redraw();
+                        if (state) control.Changed();
+                    }
                 }
             }
         }

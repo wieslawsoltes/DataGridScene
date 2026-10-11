@@ -67,9 +67,13 @@ public sealed partial class GridView : IDisposable
     public int Revision { get; private set; }
     public event EventHandler? Changed;
 
-    public GridView(GridTable table)
+    public GridView(GridTable table) : this(table, new GridQuery()) { }
+    /// <summary>Shape the initial query once instead of constructing an unfiltered view first.</summary>
+    public GridView(GridTable table, GridQuery query)
     {
+        ArgumentNullException.ThrowIfNull(table);
         Table = table;
+        Query = QuerySnapshot.Capture(query, table.Schema);
         Refresh();
         Table.Changed += TableChanged;
     }
