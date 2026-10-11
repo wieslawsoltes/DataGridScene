@@ -1,5 +1,6 @@
 using DataGridScene.Core;
 using DataGridScene.Layout;
+using DataGridScene.Rendering.Skia;
 using Microsoft.UI.Xaml;
 using System.Runtime.InteropServices.JavaScript;
 using System.Text.Json;
@@ -23,12 +24,17 @@ public static partial class BrowserBridge
             focus = grid.Selection.FocusedCell, selectedIds = grid.Selection.SelectedIds.Take(100).ToArray(), selectedCount = grid.Selection.Count,
             canUndo = grid.History?.CanUndo, canRedo = grid.History?.CanRedo,
             grid.HorizontalOffset, grid.VerticalOffset, grid.RowHeight, grid.ShowBands, grid.DarkTheme,
+            groupFooterCount = view?.Query.GroupFooterDisplay != GroupFooterDisplayMode.Hidden ? view?.Rows.Count(row => row.Kind == GridRowKind.GroupFooter) : 0,
+            focusedRecord = grid.Selection.FocusedCell is { } focused && grid.Table!.Contains(focused.RecordId) ? new { id = focused.RecordId, values = grid.Table.Schema.Columns.Where(column => column.Field != "Trend").ToDictionary(column => column.Field, column => column.GetValue(grid.Table[focused.RecordId])) } : null,
+            summaryEditor = grid.ActiveSummaryEditor is { } editor ? new { editor.EditingGroups, editor.ItemCount, editor.ValidationMessage, actions = editor.ActionBounds(page) } : null,
+            groups = view?.Groups.Select(group => new { group.Key, group.Value, group.Summaries, children = group.Children.Select(child => new { child.Key, child.Value, child.Summaries }) }).ToArray(),
             query = view?.Query, columns = grid.ColumnLayout?.Columns, filterTexts = grid.FilterTexts, expansion = view?.CaptureState(),
             records = view?.FilteredRecords.Take(12).Select(record => new { record.Id, record.Version, values = grid.Table!.Schema.Columns.Where(column => column.Field != "Trend").ToDictionary(column => column.Field, column => column.GetValue(record)) }).ToArray(),
             origin = new { origin.X, origin.Y },
             frame = frame is null ? null : new
             {
                 frame.Width, frame.Height, frame.HeaderTop, frame.FilterTop, frame.BodyTop, frame.FooterTop,
+                summaryCells = SummaryGeometry.VisibleCells(frame).ToArray(),
                 columns = frame.Columns.Slots, groups = frame.GroupChips, bands = frame.Bands, bandLevels = grid.ColumnLayout!.BandLevels,
                 rows = Enumerable.Range(frame.VisibleRows.Start, frame.VisibleRows.Count).Select(index => new
                 {
@@ -36,7 +42,7 @@ public static partial class BrowserBridge
                     bounds = frame.RowBounds(index), cells = frame.Columns.Slots.ToDictionary(column => column.Field, column => frame.CellBounds(index, column.Field))
                 }).ToArray()
             },
-            rendering = new { grid.Renderer.CellsDrawn, grid.Renderer.RowsDrawn, grid.Renderer.DrawCount, grid.Renderer.CachedTextRuns, grid.Renderer.LastDrawMilliseconds, grid.Renderer.FontFamily },
+            rendering = new { grid.Renderer.SummaryCellsDrawn, grid.Renderer.CellsDrawn, grid.Renderer.RowsDrawn, grid.Renderer.DrawCount, grid.Renderer.CachedTextRuns, grid.Renderer.LastDrawMilliseconds, grid.Renderer.FontFamily },
             buttons = page.ActionBounds(), options = page.OptionValues()
         }, Json);
     }
@@ -54,6 +60,10 @@ public static partial class BrowserBridge
                 case "focus-grid": grid.Focus(FocusState.Programmatic); break;
                 case "clear-data": grid.CancelEdit(); grid.Table!.Clear(); break;
                 case "selection": grid.SelectionMode = Enum.Parse<GridSelectionMode>(Text("mode")); break;
+                case "summaries":
+                    var configuration = JsonSerializer.Deserialize<GridQuery>(input.GetProperty("query").GetRawText(), Json) ?? throw new ArgumentException("Missing summary configuration");
+                    grid.ApplySummaries(configuration); break;
+                case "group-summary-sort": grid.SortGroupBySummary(Text("field"), Text("key"), Enum.Parse<SortDirection>(Text("direction"))); break;
                 case "search": grid.SetSearch(Text("value")); break;
                 case "filter": grid.SetColumnFilter(Text("field"), Text("value")); break;
                 case "criteria": grid.SetCriteria(Text("value")); break;
@@ -81,5 +91,5 @@ public static partial class BrowserBridge
         catch (Exception error) { return JsonSerializer.Serialize(new { ok = false, error = error.Message }, Json); }
     }
     [JSExport]
-    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.WorkspaceValidationSuite.RunAsync(), Json);
+    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.SummaryValidationSuite.RunAsync(), Json);
 }

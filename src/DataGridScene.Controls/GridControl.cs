@@ -131,7 +131,8 @@ public sealed partial class GridControl : UserControl, IDisposable
             for (int i = 0; i < View.Rows.Count; i++)
             {
                 var row = View.Rows[i];
-                double height = _rowHeights.TryGetValue(row.Key, out var custom) ? custom : row.Kind == GridRowKind.Detail ? 128 : row.Kind == GridRowKind.Group ? Math.Max(30, RowHeight) : RowHeight;
+                double height = _rowHeights.TryGetValue(row.Key, out var custom) ? custom : row.Kind == GridRowKind.Detail ? 128 : SummaryGeometry.RowHeight(View.Query, row.Kind, RowHeight);
+                if (row.Kind is GridRowKind.Group or GridRowKind.GroupFooter) height = Math.Max(height, SummaryGeometry.RowHeight(View.Query, row.Kind, RowHeight));
                 if (height != RowHeight) HeightIndex.SetHeight(i, height);
             }
         UpdateGeometry(); Changed();
@@ -197,7 +198,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public void SetQuery(GridQuery query)
     {
         RequireView(); if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
-        View!.SetQuery(query); _criteria = query.Filter; _filterTexts.Clear(); Renderer.FilterTexts = _filterTexts;
+        View!.SetQuery(query); _criteria = View.Query.Filter; _filterTexts.Clear(); Renderer.FilterTexts = _filterTexts;
         _offsetY = 0; UpdateGeometry(); ClearError();
     }
     public void SetSearch(string search)
@@ -249,7 +250,7 @@ public sealed partial class GridControl : UserControl, IDisposable
         RequireView(); if (!CommitEdit()) return;
         var groups = View!.Query.Groups.Where(group => !group.Field.Equals(field, StringComparison.OrdinalIgnoreCase)).ToList();
         if (grouped) groups.Add(new(field));
-        View.SetQuery(View.Query with { Groups = groups }); _offsetY = 0; UpdateGeometry();
+        View.SetQuery(View.Query with { Groups = groups, GroupSummarySorts = View.Query.GroupSummarySorts.Where(sort => groups.Any(group => group.Field.Equals(sort.Field, StringComparison.OrdinalIgnoreCase))).ToArray() }); _offsetY = 0; UpdateGeometry();
     }
     public void BestFit(string? field = null)
     {

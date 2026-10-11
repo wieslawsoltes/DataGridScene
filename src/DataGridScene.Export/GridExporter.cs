@@ -26,7 +26,7 @@ public static class GridExporter
         if (columns.Length == 0 || columns.Select(column => column.Field).Distinct(StringComparer.OrdinalIgnoreCase).Count() != columns.Length) throw new ArgumentException("Export columns must be nonempty and unique.");
         return columns;
     }
-    private static IEnumerable<GridRecord> Rows(GridView view, ExportOptions options) => options.SelectedIds is null ? view.FilteredRecords : view.FilteredRecords.Where(record => options.SelectedIds.Contains(record.Id));
+    private static IEnumerable<GridRecord> Rows(GridView view, ExportOptions options) => options.SelectedIds is null ? view.OrderedRecords : view.OrderedRecords.Where(record => options.SelectedIds.Contains(record.Id));
     private static string ValueText(GridColumn column, object? value, GridSchema schema, ExportOptions options)
     {
         if (value is null) return "";

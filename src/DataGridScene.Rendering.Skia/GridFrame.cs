@@ -21,8 +21,8 @@ public sealed record GridMetrics
     public bool ShowFilterRow { get; init; } = true;
     public bool ShowBands { get; init; }
 }
-public enum HitRegion { None, GroupPanel, GroupChip, GroupRemove, Band, Header, Filter, DataCell, Indicator, GroupRow, Detail, Summary }
-public sealed record GridHit(HitRegion Region, int RowIndex = -1, string? Field = null, RectD Bounds = default, string? GroupKey = null, string? BandKey = null);
+public enum HitRegion { None, GroupPanel, GroupChip, GroupRemove, Band, Header, Filter, DataCell, Indicator, GroupRow, Detail, Summary, GroupSummary, GroupFooter }
+public sealed record GridHit(HitRegion Region, int RowIndex = -1, string? Field = null, RectD Bounds = default, string? GroupKey = null, string? BandKey = null, string? SummaryKey = null);
 public sealed record GroupChip(string Field, string Caption, RectD Bounds);
 
 /// <summary>One shared geometry snapshot for painting, hit testing, editors and automation.</summary>
@@ -55,7 +55,7 @@ public sealed class GridFrame
         HeaderTop = BandTop + (metrics.ShowBands ? metrics.BandHeight * layout.BandLevels : 0);
         FilterTop = HeaderTop + metrics.HeaderHeight;
         BodyTop = FilterTop + (metrics.ShowFilterRow ? metrics.FilterHeight : 0);
-        FooterTop = Math.Max(BodyTop, Height - metrics.FooterHeight);
+        FooterTop = Math.Max(BodyTop, Height - SummaryGeometry.TotalHeight(view.Query, metrics.FooterHeight));
         OffsetY = Math.Clamp(offsetY, 0, Math.Max(0, heights.TotalHeight - BodyHeight));
         Columns = layout.Compute(Width, offsetX);
         Bands = metrics.ShowBands ? layout.ComputeBands(Width, Columns) : Array.Empty<BandSlot>();
@@ -96,11 +96,20 @@ public sealed class GridFrame
         }
         if (y < FilterTop) return new(HitRegion.Header, Field: column?.Field, Bounds: column is null ? new(0, HeaderTop, GridLayout.IndicatorWidth, Metrics.HeaderHeight) : new(column.X, HeaderTop, column.Width, Metrics.HeaderHeight));
         if (y < BodyTop) return new(HitRegion.Filter, Field: column?.Field, Bounds: column is null ? default : new(column.ClipLeft, FilterTop, column.ClipRight - column.ClipLeft, Metrics.FilterHeight));
-        if (y >= FooterTop) return new(HitRegion.Summary, Field: column?.Field);
+        if (y >= FooterTop)
+        {
+            var summary = SummaryGeometry.TotalCells(this).FirstOrDefault(cell => cell.Bounds.Contains(x, y));
+            return new(HitRegion.Summary, Field: column?.Field, SummaryKey: summary?.Key);
+        }
         double dataY = y - BodyTop + OffsetY;
         if (dataY >= Heights.TotalHeight || Heights.Count == 0) return new(HitRegion.None);
         int index = Heights.RowAt(dataY); var row = View.Rows[index];
-        if (row.Kind == GridRowKind.Group) return new(HitRegion.GroupRow, index, Bounds: RowBounds(index), GroupKey: row.Key);
+        if (row.Kind is GridRowKind.Group or GridRowKind.GroupFooter)
+        {
+            var summary = SummaryGeometry.GroupCells(this, index).FirstOrDefault(cell => cell.Bounds.Contains(x, y));
+            return new(summary is not null ? HitRegion.GroupSummary : row.Kind == GridRowKind.GroupFooter ? HitRegion.GroupFooter : HitRegion.GroupRow,
+                index, summary?.Field, summary?.Bounds ?? RowBounds(index), row.Group!.Key, SummaryKey: summary?.Key);
+        }
         if (row.Kind == GridRowKind.Detail) return new(HitRegion.Detail, index, Bounds: RowBounds(index));
         if (x < GridLayout.IndicatorWidth) return new(HitRegion.Indicator, index, Bounds: new(0, RowBounds(index).Y, GridLayout.IndicatorWidth, Heights[index]));
         return column is null ? new(HitRegion.None) : new(HitRegion.DataCell, index, column.Field, CellBounds(index, column.Field));

@@ -79,6 +79,7 @@ public static class LayoutSerializer
             heights.Add(key, height);
         }
         ValidateQuery(document.Query);
+        document = document with { Query = QuerySnapshot.Capture(document.Query, schema) };
         var check = new GridLayout(schema);
         check.RestoreColumns(document.Columns);
         document = document with
