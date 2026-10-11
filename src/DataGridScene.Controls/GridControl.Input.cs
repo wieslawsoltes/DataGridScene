@@ -197,7 +197,7 @@ public sealed partial class GridControl
     {
         if (_editor is not null || View is null || ColumnLayout is null) return;
         for (var source = args.OriginalSource as DependencyObject; source is not null && !ReferenceEquals(source, this); source = VisualTreeHelper.GetParent(source))
-            if (ReferenceEquals(source, FilterPanel)) return;
+            if (ReferenceEquals(source, FilterPanel) || ReferenceEquals(source, _nativeCells)) return;
         bool control = Down(VirtualKey.Control), shift = Down(VirtualKey.Shift);
         bool handled = true;
         Safe(() =>

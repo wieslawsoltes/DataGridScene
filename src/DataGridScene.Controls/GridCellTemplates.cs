@@ -112,7 +112,9 @@ public static class GridCellTemplates
             };
             return control;
         }) { Bind = (element, buffer) => Bind(element, () => {
-            var control = (NumberBox)element; control.Value = buffer.Value is null ? double.NaN : Number(buffer.Value, minimum, maximum); control.IsEnabled = buffer.CanEdit;
+            var control = (NumberBox)element;
+            if (!buffer.IsDirty) control.Value = buffer.Value is null ? double.NaN : Number(buffer.Value, minimum, maximum);
+            control.IsEnabled = buffer.CanEdit;
         }), Flush = (element, buffer) => {
             var control = (NumberBox)element;
             string expected = buffer.Value is null ? "" : Convert.ToString(buffer.Value, buffer.Culture) ?? "";

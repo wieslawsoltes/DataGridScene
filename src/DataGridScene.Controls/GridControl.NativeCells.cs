@@ -104,15 +104,23 @@ public sealed partial class GridControl
     private void InitializeCellControls()
     {
         _root.Children.Insert(1, _nativeCells);
-        _nativeCells.PointerWheelChanged += (_, args) =>
+        _nativeCells.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, args) =>
         {
-            if (args.Handled) return;
+            if (IsNativeWheelConsumer(args.OriginalSource as DependencyObject)) return;
             var point = args.GetCurrentPoint(_nativeCells); double amount = point.Properties.MouseWheelDelta / 120d;
             if (point.Properties.IsHorizontalMouseWheel || Shift(args.KeyModifiers)) ScrollTo(_offsetX - amount * 96, _offsetY);
             else ScrollTo(_offsetX, _offsetY - amount * RowHeight * 3);
             args.Handled = true;
-        };
+        }), true);
         Unloaded += (_, _) => { if (!_disposed && CommitEdit()) ResetCellControls(); };
+    }
+    private bool IsNativeWheelConsumer(DependencyObject? source)
+    {
+        for (var element = source; element is not null && !ReferenceEquals(element, _nativeCells); element = VisualTreeHelper.GetParent(element))
+        {
+            if (element is TextBox { AcceptsReturn: true } or Slider or ComboBox { IsDropDownOpen: true } or CalendarDatePicker { IsCalendarOpen: true }) return true;
+        }
+        return false;
     }
     private NativeHost AcquireCell(GridCellTemplate template)
     {
@@ -125,7 +133,7 @@ public sealed partial class GridControl
         host.Container.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) =>
         {
             if (_syncingNativeCells || host.Binding || host.Buffer is not { IsActive: true } buffer) return;
-            if (!CommitOtherCellControls(buffer)) return;
+            if (!CommitOtherCellControls(buffer)) { args.Handled = true; return; }
             Selection.Select(View!, buffer.Address, Shift(args.KeyModifiers), Control(args.KeyModifiers), SelectionFields);
         }), true);
         host.Container.GotFocus += (_, _) =>
@@ -140,7 +148,7 @@ public sealed partial class GridControl
             if (buffer is null || host.Binding || _syncingNativeCells || !host.Template.CommitOnLostFocus) return;
             DispatcherQueue.TryEnqueue(() =>
             {
-                if (_disposed || !ReferenceEquals(host.Buffer, buffer) || !buffer.IsActive || IsFocusWithin(host.Container) || !buffer.IsDirty) return;
+                if (_disposed || !ReferenceEquals(host.Buffer, buffer) || !buffer.IsActive || IsFocusWithin(host.Container)) return;
                 if (!CommitCellBuffer(buffer)) FocusCell(host);
             });
         };
@@ -337,6 +345,12 @@ public sealed partial class GridControl
     }
     private bool CommitCellBuffer(GridCellEditBuffer buffer)
     {
+        try
+        {
+            if (_cellHosts.TryGetValue(buffer.Address, out var host) && ReferenceEquals(host.Buffer, buffer))
+                host.Template.Flush?.Invoke(host.Content, buffer);
+        }
+        catch (Exception error) { Report(error); return false; }
         if (buffer.TryCommit()) { if (buffer.IsActive) ClearError(); return true; }
         Report(new InvalidOperationException(buffer.Error ?? "Unable to commit the native cell.")); return false;
     }
@@ -349,9 +363,7 @@ public sealed partial class GridControl
             foreach (var host in _cellHosts.Values.ToArray())
                 if (host.Buffer is { IsActive: true } buffer && !ReferenceEquals(buffer, except))
                 {
-                    try { host.Template.Flush?.Invoke(host.Content, buffer); }
-                    catch (Exception error) { Report(error); FocusCell(host); return false; }
-                    if (buffer.IsDirty && !CommitCellBuffer(buffer)) { FocusCell(host); return false; }
+                    if (!CommitCellBuffer(buffer)) { FocusCell(host); return false; }
                 }
             if (except is null && _nativeEditCell is not null) { _nativeEditCell = null; _nativeFrame = null; _nativeSyncPending = true; }
             return true;
@@ -365,6 +377,6 @@ public sealed partial class GridControl
     public void CancelCellEdits()
     {
         foreach (var host in _cellHosts.Values.ToArray()) { host.Buffer?.Cancel(); RefreshCellHost(host); }
-        _nativeEditCell = null; _nativeFrame = null; SynchronizeCellControls(); ClearError();
+        _nativeEditCell = null; _nativeFrame = null; if (_cellHosts.Count > 0) SynchronizeCellControls(); ClearError();
     }
 }
