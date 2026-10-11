@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 using Windows.System;
 using Windows.UI.Core;
@@ -25,7 +26,7 @@ public sealed partial class GridControl
         _pressedCell = _previousCell = null;
         _previousTable = null; _validDoubleTap = false;
         _pressedHeader = _pressedBand = null; _bandWeights = null; _resizing = _dragging = false;
-        Renderer.DragMarkerX = null;
+        Renderer.DragMarkerX = null; Renderer.HoveredColumn = null; Renderer.HoveredRecordId = null;
     }
     private bool _resizing, _dragging;
     private double _originalWidth;
@@ -37,6 +38,7 @@ public sealed partial class GridControl
     {
         _surface.PointerPressed += SurfacePressed;
         _surface.PointerMoved += SurfaceMoved;
+        _surface.PointerExited += (_, _) => UpdateHover(null);
         _surface.PointerReleased += SurfaceReleased;
         _surface.PointerCaptureLost += (_, _) => { _pressedHeader = _pressedBand = null; _bandWeights = null; _pressedCell = null; _resizing = _dragging = false; Renderer.DragMarkerX = null; Redraw(); };
         _surface.PointerWheelChanged += (_, args) =>
@@ -127,10 +129,18 @@ public sealed partial class GridControl
         });
         args.Handled = true;
     }
+    private void UpdateHover(GridHit? hit)
+    {
+        string? column = hit?.Region is HitRegion.Header or HitRegion.Band ? hit.Field : null;
+        long? id = hit?.Region == HitRegion.DataCell && View is not null ? View.Rows[hit.RowIndex].Record!.Id : null;
+        if (Renderer.HoveredColumn == column && Renderer.HoveredRecordId == id) return;
+        Renderer.HoveredColumn = column; Renderer.HoveredRecordId = id; Redraw();
+    }
     private void SurfaceMoved(object sender, PointerRoutedEventArgs args)
     {
         if (ColumnLayout is null || Frame is null) return;
         var point = args.GetCurrentPoint(_surface).Position;
+        UpdateHover(Frame.HitTest(point.X, point.Y));
         if (TryBandMoved(point)) { args.Handled = true; return; }
         if (_pressedCell is not null && View is not null)
         {
@@ -186,6 +196,8 @@ public sealed partial class GridControl
     private void GridKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (_editor is not null || View is null || ColumnLayout is null) return;
+        for (var source = args.OriginalSource as DependencyObject; source is not null && !ReferenceEquals(source, this); source = VisualTreeHelper.GetParent(source))
+            if (ReferenceEquals(source, FilterPanel)) return;
         bool control = Down(VirtualKey.Control), shift = Down(VirtualKey.Shift);
         bool handled = true;
         Safe(() =>

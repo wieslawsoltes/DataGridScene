@@ -132,6 +132,33 @@ try {
       state.records.every(row => row.values.Company === 'Alpine Ski House');
   });
   report.checks.push('public-checked-filter-pointer-apply');
+  async function clickChrome(name) {
+    const rect = await page.evaluate(name => dataGridScene.snapshot().buttons[name], name);
+    assert.ok(rect && rect.width > 0 && rect.height > 0, 'Deployed chrome action: ' + name);
+    await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  }
+  state = await page.evaluate(() => dataGridScene.snapshot());
+  assert.equal(state.chrome.commandCount, 18);
+  const filterCount = state.filteredCount;
+  const retainedValues = state.valueFilters;
+  await clickChrome('filter-panel-enable');
+  await page.waitForFunction(() => !dataGridScene.snapshot().query.isFilterEnabled && dataGridScene.snapshot().filteredCount === 1000);
+  assert.deepEqual((await page.evaluate(() => dataGridScene.snapshot())).valueFilters, retainedValues);
+  await clickChrome('filter-panel-enable');
+  await page.waitForFunction(count => dataGridScene.snapshot().query.isFilterEnabled && dataGridScene.snapshot().filteredCount === count, filterCount);
+  report.checks.push('public-filter-panel-suspend-and-restore');
+  await clickChrome('tab-themes');
+  await clickChrome('theme-dark');
+  await page.waitForFunction(() => dataGridScene.snapshot().chrome.shellDark && dataGridScene.snapshot().darkTheme);
+  await clickChrome('tab-demo');
+  await page.screenshot({ path: path.join(output, 'deployed-office-dark.png') });
+  await clickChrome('tab-themes');
+  await clickChrome('theme-white');
+  await page.waitForFunction(() => !dataGridScene.snapshot().chrome.shellDark && !dataGridScene.snapshot().darkTheme);
+  await clickChrome('tab-demo');
+  await page.screenshot({ path: path.join(output, 'deployed-office-filter-panel.png') });
+  report.checks.push('public-ribbon-and-whole-shell-themes');
   assert.deepEqual(report.pageErrors, []);
   report.checks.push('no-unhandled-page-errors');
   report.passed = true;

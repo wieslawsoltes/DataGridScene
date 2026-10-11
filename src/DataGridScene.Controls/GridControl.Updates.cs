@@ -55,6 +55,7 @@ public sealed partial class GridControl
                     bool rows = control._rowGeometryPending, geometry = control._geometryPending, state = control._statePending, redraw = control._redrawPending;
                     control._rowGeometryPending = control._geometryPending = control._statePending = control._redrawPending = false;
                     control._batchFilters = null; control._batchValueFilters = null; control._batchCriteria = null;
+                    control.RefreshFilterPanel();
                     if (rows) control.RebuildRows();
                     else
                     {

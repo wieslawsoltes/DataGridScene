@@ -63,9 +63,13 @@ Viewport frames and summary geometry are cached across display-only updates. The
 
 The column funnel now supports a searchable, virtualized checklist with inclusion/exclusion, all/none, staged Apply/Cancel, and retained choices across searches. Typed selections persist in workspace version 3. The condition entry remains available. Membership predicates use an index and read each field once per tested row. See [APIs, limits and measured results](docs/value-filters.md).
 
+## Command UI and filter strip
+
+The sample now uses a compact Office-style command ribbon with Demo/Themes tabs, original vector icons, searchable examples, full-width view and whole-shell white/dark themes. The grid has flat headers, correct up/down sort arrows, hover feedback, and a native bottom filter strip. Suspend/re-enable conditions without losing checked selections, remove one condition, or clear conditions while preserving search. See [UI reference, reusable controls and filter-panel APIs](docs/chrome.md). This is a visual/functional increment, not pixel-identical or complete DevExpress parity.
+
 ## Validation and deployment
 
-The shared C# suite currently contains **313 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace, 20 summary, 11 live-update/performance, 8 review and 13 checked-filter checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The review harness also runs ten real Uno control API contracts. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
+The shared C# suite currently contains **331 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace, 20 summary, 11 live-update/performance, 8 review, 13 checked-filter and 18 command-chrome/filter-panel checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The review and chrome harnesses also run 22 individual real Uno control API contracts. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
 
 CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell, opens the nested-band and group-summary samples, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input.
 

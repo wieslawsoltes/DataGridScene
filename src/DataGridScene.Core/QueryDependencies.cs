@@ -60,7 +60,7 @@ internal static class QueryDependencies
         }
         foreach (var sort in query.Sorts) Add(sort.Field);
         foreach (var group in query.Groups) Add(group.Field);
-        if (query.Filter is not null) Filter(query.Filter);
+        if (query.IsFilterEnabled && query.Filter is not null) Filter(query.Filter);
         void Summaries(IReadOnlyList<SummaryDescriptor> items)
         {
             foreach (var item in items)

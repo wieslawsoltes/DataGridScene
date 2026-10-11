@@ -49,6 +49,7 @@ public static class LayoutSerializer
         ArgumentNullException.ThrowIfNull(document);
         // Older readers must reject, rather than ignore, a saved checked-value filter.
         if (document.ValueFilters.Count > 0 && document.Version < 3) document = document with { Version = 3 };
+        if (!document.Query.IsFilterEnabled && document.Version < 4) document = document with { Version = 4 };
         string json = JsonSerializer.Serialize(document, Options);
         if (json.Length > 1_048_576) throw new InvalidOperationException("Layout state exceeds 1 MiB. Save without selection state for very large sparse selections.");
         return json;
@@ -61,7 +62,7 @@ public static class LayoutSerializer
         GridLayoutDocument document;
         try { document = JsonSerializer.Deserialize<GridLayoutDocument>(json, Options) ?? throw new FormatException("Empty layout."); }
         catch (JsonException error) { throw new FormatException("Invalid layout JSON.", error); }
-        if (document.Version is not (1 or 2 or 3)) throw new FormatException($"Unsupported layout version: {document.Version}");
+        if (document.Version is not (1 or 2 or 3 or 4)) throw new FormatException($"Unsupported layout version: {document.Version}");
         if (!double.IsFinite(document.RowHeight) || document.RowHeight < 18 || document.RowHeight > 256) throw new FormatException("Invalid row height.");
         if (document.Theme is not ("Light" or "Dark") || !Enum.IsDefined(document.SelectionMode)) throw new FormatException("Unknown theme or selection mode.");
         if (!double.IsFinite(document.HorizontalOffset) || !double.IsFinite(document.VerticalOffset) || document.HorizontalOffset < 0 || document.VerticalOffset < 0)
@@ -89,6 +90,8 @@ public static class LayoutSerializer
                 throw new FormatException("Invalid custom row height.");
             heights.Add(key, height);
         }
+        if (document.Version < 4 && !document.Query.IsFilterEnabled)
+            throw new FormatException("Suspended filters require layout version 4.");
         ValidateQuery(document.Query);
         document = document with { Query = QuerySnapshot.Capture(document.Query, schema) };
         var check = new GridLayout(schema);
