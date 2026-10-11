@@ -49,12 +49,36 @@ public sealed partial class GridCanvasRenderer : IDisposable
         _text.Draw(canvas, text, (float)x, (float)yCenter, (float)Math.Max(0, width), _textPaint, bold,
             alignment == ColumnAlignment.Right ? SKTextAlign.Right : alignment == ColumnAlignment.Center ? SKTextAlign.Center : SKTextAlign.Left);
     }
+    public string? HoveredColumn { get; set; }
+    public long? HoveredRecordId { get; set; }
+    // Retained immutable native paths eliminate per-row/per-header allocations during paint.
+    private static SKPath Triangle(bool down, bool horizontal = false)
+    {
+        var path = new SKPath();
+        if (horizontal) { path.MoveTo(-2, -3); path.LineTo(2, 0); path.LineTo(-2, 3); }
+        else { path.MoveTo(-3, down ? -2 : 2); path.LineTo(3, down ? -2 : 2); path.LineTo(0, down ? 2 : -2); }
+        path.Close(); return path;
+    }
+    private static SKPath FunnelPath()
+    {
+        var path = new SKPath(); path.MoveTo(-4,-4); path.LineTo(4,-4); path.LineTo(1,0);
+        path.LineTo(1,4); path.LineTo(-1,5); path.LineTo(-1,0); path.Close(); return path;
+    }
+    private readonly SKPath _down = Triangle(true), _up = Triangle(false), _right = Triangle(false, true), _funnel = FunnelPath();
+    public int RetainedGlyphPaths => 4;
+    private static void Glyph(SKCanvas canvas, SKPath path, double x, double y, SKPaint paint)
+    {
+        int saved = canvas.SaveCount; canvas.Save();
+        try { canvas.Translate((float)x, (float)y); canvas.DrawPath(path, paint); }
+        finally { canvas.RestoreToCount(saved); }
+    }
     private void Chevron(SKCanvas canvas, double x, double y, bool expanded, SKColor color)
     {
-        using var path = new SKPath();
-        if (expanded) { path.MoveTo((float)x - 3, (float)y - 2); path.LineTo((float)x + 3, (float)y - 2); path.LineTo((float)x, (float)y + 2); }
-        else { path.MoveTo((float)x - 2, (float)y - 3); path.LineTo((float)x + 2, (float)y); path.LineTo((float)x - 2, (float)y + 3); }
-        path.Close(); _fill.Color = color; canvas.DrawPath(path, _fill);
+        _fill.Color = color; Glyph(canvas, expanded ? _down : _right, x, y, _fill);
+    }
+    private void SortArrow(SKCanvas canvas, double x, double y, SortDirection direction, SKColor color)
+    {
+        _fill.Color = color; Glyph(canvas, direction == SortDirection.Ascending ? _up : _down, x, y, _fill);
     }
     private void CheckBox(SKCanvas canvas, double x, double y, bool selected, bool mixed = false)
     {
@@ -98,7 +122,7 @@ public sealed partial class GridCanvasRenderer : IDisposable
                 Fill(canvas, box.X, box.Y, box.Width, box.Height, Palette.Background);
                 _stroke.Color = Palette.Line; _stroke.StrokeWidth = 1; canvas.DrawRect(new SKRect((float)box.X + 0.5f, (float)box.Y + 0.5f, (float)box.Right - 0.5f, (float)box.Bottom - 0.5f), _stroke);
                 Text(canvas, chip.Caption, box.X + 10, box.Y + box.Height / 2, box.Width - 45);
-                Chevron(canvas, box.Right - 31, box.Y + box.Height / 2, frame.View.Query.Groups[i].Direction == SortDirection.Descending, Palette.Muted);
+                SortArrow(canvas, box.Right - 31, box.Y + box.Height / 2, frame.View.Query.Groups[i].Direction, Palette.Muted);
                 Line(canvas, box.Right - 16, box.Y + 10, box.Right - 10, box.Y + 16, Palette.Muted);
                 Line(canvas, box.Right - 16, box.Y + 16, box.Right - 10, box.Y + 10, Palette.Muted);
                 if (i + 1 < frame.GroupChips.Count) Text(canvas, ">", box.Right + 4, box.Y + box.Height / 2, 12, Palette.Muted);
@@ -111,21 +135,18 @@ public sealed partial class GridCanvasRenderer : IDisposable
         {
             var column = frame.View.Table.Schema.Columns[slot.SchemaIndex];
             canvas.Save(); canvas.ClipRect(new SKRect((float)slot.ClipLeft, (float)frame.BandTop, (float)slot.ClipRight, (float)frame.BodyTop));
-            Text(canvas, column.Caption, slot.X + 9, frame.HeaderTop + frame.Metrics.HeaderHeight / 2, slot.Width - 42, bold: true);
+            if (HoveredColumn == column.Field) Fill(canvas, slot.X, frame.HeaderTop, slot.Width, frame.Metrics.HeaderHeight, Palette.Selection.WithAlpha(150));
+            Text(canvas, column.Caption, slot.X + 9, frame.HeaderTop + frame.Metrics.HeaderHeight / 2, slot.Width - 42);
             var sort = frame.View.Query.Sorts.Select((value, index) => (value, index)).FirstOrDefault(item => item.value.Field.Equals(column.Field, StringComparison.OrdinalIgnoreCase));
             if (sort.value is not null)
             {
-                Chevron(canvas, slot.X + slot.Width - 29, frame.HeaderTop + 15, sort.value.Direction == SortDirection.Descending, Palette.Accent);
+                SortArrow(canvas, slot.X + slot.Width - 29, frame.HeaderTop + 15, sort.value.Direction, Palette.Accent);
                 if (frame.View.Query.Sorts.Count > 1) Text(canvas, (sort.index + 1).ToString(), slot.X + slot.Width - 23, frame.HeaderTop + 21, 10, Palette.Accent);
             }
             // Funnel glyph is vector geometry, not a copied icon asset.
             double fx = slot.X + slot.Width - 12, fy = frame.HeaderTop + frame.Metrics.HeaderHeight / 2;
-            using (var funnel = new SKPath())
-            {
-                funnel.MoveTo((float)fx - 4, (float)fy - 4); funnel.LineTo((float)fx + 4, (float)fy - 4); funnel.LineTo((float)fx + 1, (float)fy);
-                funnel.LineTo((float)fx + 1, (float)fy + 4); funnel.LineTo((float)fx - 1, (float)fy + 5); funnel.LineTo((float)fx - 1, (float)fy); funnel.Close();
-                _stroke.Color = FilterTexts.ContainsKey(column.Field) ? Palette.Accent : Palette.Muted; _stroke.StrokeWidth = 1; canvas.DrawPath(funnel, _stroke);
-            }
+            _stroke.Color = FilterTexts.ContainsKey(column.Field) ? Palette.Accent : HoveredColumn == column.Field ? Palette.Muted : Palette.Muted.WithAlpha(100);
+            _stroke.StrokeWidth = 1; Glyph(canvas, _funnel, fx, fy, _stroke);
             if (frame.Metrics.ShowFilterRow)
             {
                 bool hasFilter = FilterTexts.TryGetValue(column.Field, out string? filter);
@@ -163,7 +184,7 @@ public sealed partial class GridCanvasRenderer : IDisposable
             if (row.Kind == GridRowKind.Detail) { DrawDetail(canvas, row.Record!, bounds); continue; }
             var record = row.Record!;
             bool selected = frame.Selection.Mode != GridSelectionMode.Cells && frame.Selection.Contains(record.Id);
-            SKColor background = selected ? Palette.Selection : index % 2 == 0 ? Palette.Background : Palette.Alternate;
+            SKColor background = selected ? Palette.Selection : HoveredRecordId == record.Id ? Palette.Group : index % 2 == 0 ? Palette.Background : Palette.Alternate;
             Fill(canvas, 0, bounds.Y, frame.Width, bounds.Height, background);
             foreach (var slot in frame.Columns.Slots)
             {
@@ -255,5 +276,6 @@ public sealed partial class GridCanvasRenderer : IDisposable
     {
         if (_disposed) return;
         _disposed = true; _text.Dispose(); _fill.Dispose(); _stroke.Dispose(); _textPaint.Dispose();
+        _down.Dispose(); _up.Dispose(); _right.Dispose(); _funnel.Dispose();
     }
 }

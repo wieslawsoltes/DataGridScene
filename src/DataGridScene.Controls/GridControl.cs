@@ -70,7 +70,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public bool DarkTheme
     {
         get => _dark;
-        set { _dark = value; Renderer.Palette = value ? GridPalette.Dark : GridPalette.Light; RequestedTheme = value ? ElementTheme.Dark : ElementTheme.Light; Redraw(); Changed(); }
+        set { _dark = value; Renderer.Palette = value ? GridPalette.Dark : GridPalette.Light; RequestedTheme = value ? ElementTheme.Dark : ElementTheme.Light; FilterPanel.ApplyTheme(value); Redraw(); Changed(); }
     }
     public Func<GridRecord, GridDetailData>? DetailProvider { get => Renderer.DetailProvider; set { Renderer.DetailProvider = value; Redraw(); } }
 
@@ -88,6 +88,7 @@ public sealed partial class GridControl : UserControl, IDisposable
         _root.Children.Add(_surface); _root.Children.Add(_overlay);
         Grid.SetColumn(_vertical, 1); _root.Children.Add(_vertical);
         Grid.SetRow(_horizontal, 1); _root.Children.Add(_horizontal);
+        InitializeFilterPanel();
         Content = _root;
         _surface.SizeChanged += (_, _) => UpdateGeometry();
         _vertical.ValueChanged += (_, args) => { if (!_updatingScroll) ScrollTo(_offsetX, args.NewValue); };
@@ -122,7 +123,7 @@ public sealed partial class GridControl : UserControl, IDisposable
             View = new(table); ColumnLayout = new(table.Schema); History = new(table);
             View.Changed += ViewChanged; ColumnLayout.Changed += LayoutChanged; History.Changed += HistoryChanged;
         }
-        RebuildRows();
+        RefreshFilterDisplay(); RebuildRows();
     }
     private void ViewChanged(object? sender, EventArgs args)
     {
@@ -278,7 +279,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public void SetCriteria(string expression)
     {
         RequireView(); if (!CommitEdit()) return;
-        var filter = CriteriaParser.Parse(expression); ApplyFilter(filter, _filterTexts); _criteria = filter; ClearError();
+        var filter = CriteriaParser.Parse(expression); ApplyFilter(filter, _filterTexts); _criteria = filter; RefreshFilterDisplay(); ClearError(); Changed();
     }
     public void SetColumnFilter(string field, string text)
     {
@@ -291,7 +292,7 @@ public sealed partial class GridControl : UserControl, IDisposable
         ApplyFilter(_criteria, filters, values);
         _valueFilters.Clear(); foreach (var pair in values) _valueFilters.Add(pair.Key, pair.Value);
         _filterTexts.Clear(); foreach (var pair in filters) _filterTexts.Add(pair.Key, pair.Value);
-        RefreshFilterDisplay(); ClearError(); Redraw();
+        RefreshFilterDisplay(); ClearError(); Redraw(); Changed();
     }
     private void ApplyFilter(GridFilter? criteria, IReadOnlyDictionary<string, string> texts, IReadOnlyDictionary<string, ColumnValueFilter>? values = null)
     {
@@ -305,7 +306,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public void ClearFilters()
     {
         RequireView(); if (!CommitEdit()) return;
-        View!.SetQuery(View.RequestedQuery with { Filter = null, Search = "" }); _criteria = null; _filterTexts.Clear(); _valueFilters.Clear(); RefreshFilterDisplay(); _offsetY = 0; ClearError(); UpdateGeometry();
+        View!.SetQuery(View.RequestedQuery with { Filter = null, Search = "", IsFilterEnabled = true }); _criteria = null; _filterTexts.Clear(); _valueFilters.Clear(); RefreshFilterDisplay(); _offsetY = 0; ClearError(); UpdateGeometry();
     }
     public void SortColumn(string field, SortDirection? direction, bool append = false)
     {
@@ -329,6 +330,8 @@ public sealed partial class GridControl : UserControl, IDisposable
     public void BestFit(string? field = null)
     {
         RequireView(); if (!CommitEdit()) return;
+        if (field is not null) _ = Table!.Schema[field];
+        var widths = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         foreach (var column in Table!.Schema.Columns.Where(column => field is null || column.Field.Equals(field, StringComparison.OrdinalIgnoreCase)))
         {
             float width = Renderer.MeasureText(column.Caption, true) + 48;
@@ -338,8 +341,11 @@ public sealed partial class GridControl : UserControl, IDisposable
                 if (column.Presentation == ColumnPresentation.Sparkline) { width = Math.Max(width, 140); break; }
                 width = Math.Max(width, Renderer.MeasureText(column.Display(column.GetValue(record), Table.Schema.Culture)) + 24);
             }
-            ColumnLayout!.SetWidth(column.Field, Math.Clamp(width, 50, 640));
+            widths[column.Field] = Math.Clamp(width, 50, 640);
         }
+        // Publish once, after every getter/measurement succeeds. A rejected best-fit must
+        // not leave half the columns resized or allocate a frame for every column.
+        ColumnLayout!.RestoreColumns(ColumnLayout.Columns.Select(column => widths.TryGetValue(column.Field, out double width) ? column with { Width = width } : column));
     }
     public string SaveLayout(bool includeSelection = true)
     {
@@ -369,10 +375,9 @@ public sealed partial class GridControl : UserControl, IDisposable
         nextLayout.RestoreColumns(document.Columns);
         // Stage data shaping before replacing any live control state. For example,
         // a computed column may reject a sort only when actual records are present.
-        var nextView = new GridView(Table);
+        var nextView = new GridView(Table, document.EffectiveQuery());
         try
         {
-            nextView.SetQuery(document.EffectiveQuery());
             nextView.RestoreState(document.ViewState);
             if (document.Selection is not null) new GridSelection().RestoreState(nextView, document.Selection);
         }
