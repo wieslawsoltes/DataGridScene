@@ -18,6 +18,8 @@ public static partial class BrowserBridge
         var page = Page; var grid = page.DataGrid; var view = grid.View; var frame = grid.Frame; var origin = grid.SurfaceOrigin();
         return JsonSerializer.Serialize(new
         {
+            chrome = page.ChromeSnapshot(),
+            filterPanel = new { visible = grid.FilterPanel.Visibility == Visibility.Visible, grid.FilterPanel.Items, grid.FilterPanel.IsFilterEnabled, grid.FilterPanel.ContentBuildCount },
             ready = page.Ready, page.Scenario, page.RecordCount, filteredCount = view?.FilteredRecords.Count, viewRowCount = view?.Rows.Count,
             page.Message, grid.LastError, grid.IsEditing, grid.IsEditorReady, grid.EditorText, grid.EditingField, grid.EditingRecordId,
             selectionMode = grid.SelectionMode.ToString(), selectedCellCount = grid.Selection.SelectedCellCount,
@@ -51,7 +53,7 @@ public static partial class BrowserBridge
                 grid.FrameBuildCount, grid.FrameReuseCount, grid.RowGeometryBuildCount, heightRevision = grid.HeightIndex.Revision, heightResets = grid.HeightIndex.ResetCount,
                 heightMode = grid.HeightIndex.StorageMode.ToString(), heightEntries = grid.HeightIndex.StorageEntryCount,
                 page.LiveUpdatesRunning, page.LiveTick, page.ControlEvents },
-            rendering = new { grid.Renderer.SummaryCellsDrawn, grid.Renderer.CellsDrawn, grid.Renderer.RowsDrawn, grid.Renderer.DrawCount, grid.Renderer.CachedTextRuns, grid.Renderer.LastDrawMilliseconds, grid.Renderer.FontFamily },
+            rendering = new { grid.Renderer.HoveredColumn, grid.Renderer.HoveredRecordId, grid.Renderer.RetainedGlyphPaths, grid.Renderer.SummaryCellsDrawn, grid.Renderer.CellsDrawn, grid.Renderer.RowsDrawn, grid.Renderer.DrawCount, grid.Renderer.CachedTextRuns, grid.Renderer.LastDrawMilliseconds, grid.Renderer.FontFamily },
             summaryActions = grid.SummaryActionBounds(page),
             buttons = page.ActionBounds(), options = page.OptionValues()
         }, Json);
@@ -66,6 +68,8 @@ public static partial class BrowserBridge
             switch (name)
             {
                 case "value-filter": grid.SetColumnValues(Text("field"), JsonSerializer.Deserialize<ColumnValueFilter>(input.GetProperty("filter").GetRawText(), Json)); break;
+                case "validate-chrome": return JsonSerializer.Serialize(new { ok = true, report = ChromeControlChecks.Run() }, Json);
+                case "filter-enabled": grid.IsFilterEnabled = input.GetProperty("value").GetBoolean(); break;
                 case "validate-controls": return JsonSerializer.Serialize(new { ok = true, report = ControlReviewChecks.Run() }, Json);
                 // Fixture/configuration commands do not simulate user edits or successful assertions.
                 case "fixture-value": grid.Table!.Apply([new(input.GetProperty("id").GetInt64(), Text("field"), input.GetProperty("value").Clone())]); break;
@@ -116,5 +120,5 @@ public static partial class BrowserBridge
         catch (Exception error) { return JsonSerializer.Serialize(new { ok = false, error = error.Message }, Json); }
     }
     [JSExport]
-    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.ValueFilterValidation.RunAsync(), Json);
+    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.FilterPresentationValidationSuite.RunAsync(), Json);
 }
