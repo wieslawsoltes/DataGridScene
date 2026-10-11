@@ -18,6 +18,7 @@ public static class DataSourceValidation
     public static void Validate(GridQuery query, DataCapabilities capabilities, int offset, int count)
     {
         if (offset < 0 || count < 1 || count > 10000) throw new ArgumentOutOfRangeException(nameof(offset));
+        if (query.EffectiveGroupSummaries.Count > 0 && query.GroupSummaries is not null || query.GroupSummarySorts.Count > 0 || query.GroupFooterDisplay != GroupFooterDisplayMode.Hidden) throw new NotSupportedException("The record-page contract does not represent group summaries or footers.");
         if (query.Groups.Count > 0) throw new NotSupportedException("The record-page contract does not represent server group rows.");
         if (query.Sorts.Count > 0 && !capabilities.HasFlag(DataCapabilities.Sort)) throw new NotSupportedException("This source does not support sorting.");
         if (query.Filter is not null && !capabilities.HasFlag(DataCapabilities.Filter)) throw new NotSupportedException("This source does not support filtering.");
@@ -31,7 +32,7 @@ public sealed class LocalPageSource(GridTable table) : IGridPageSource
     public DataCapabilities Capabilities => DataCapabilities.Sort | DataCapabilities.Filter | DataCapabilities.Search;
     public ValueTask<GridPage> FetchAsync(GridQuery query, int offset, int count, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested(); DataSourceValidation.Validate(query, Capabilities, offset, count);
+        cancellationToken.ThrowIfCancellationRequested(); query = QuerySnapshot.Capture(query, Schema); DataSourceValidation.Validate(query, Capabilities, offset, count);
         using var view = new GridView(table); view.SetQuery(query);
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(new GridPage(offset, view.FilteredRecords.Skip(offset).Take(count).ToArray(), view.FilteredRecords.Count, table.Revision.ToString()));
@@ -48,6 +49,7 @@ public sealed class HttpJsonPageSource(HttpClient client, Uri endpoint, GridSche
     public sealed record Response(int Offset, RecordDto[] Records, int? TotalCount, string? Revision);
     public async ValueTask<GridPage> FetchAsync(GridQuery query, int offset, int count, CancellationToken cancellationToken)
     {
+        query = QuerySnapshot.Capture(query, Schema);
         DataSourceValidation.Validate(query, Capabilities, offset, count);
         using var response = await client.PostAsJsonAsync(endpoint, new Request(query, offset, count), cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -81,6 +83,7 @@ public sealed class GridPageCache : IDisposable
     }
     public void SetQuery(GridQuery query)
     {
+        query = QuerySnapshot.Capture(query, _source.Schema);
         DataSourceValidation.Validate(query, _source.Capabilities, 0, PageSize);
         CancellationTokenSource previous;
         lock (_gate)

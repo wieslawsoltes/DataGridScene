@@ -85,6 +85,9 @@ public sealed class GridSchema
     private readonly Dictionary<string, GridColumn> _fields;
     public ReadOnlyCollection<GridColumn> Columns { get; }
     public CultureInfo Culture { get; }
+    /// <summary>Application-owned registry; do not mutate after binding. Factories must return a fresh accumulator.</summary>
+    public IReadOnlyDictionary<string, Func<IGridSummaryAccumulator>> CustomSummaries { get; init; } =
+        new ReadOnlyDictionary<string, Func<IGridSummaryAccumulator>>(new Dictionary<string, Func<IGridSummaryAccumulator>>());
     public Func<IReadOnlyList<object?>, string?>? RowValidator { get; init; }
     public GridSchema(IEnumerable<GridColumn> columns, CultureInfo? culture = null)
     {
