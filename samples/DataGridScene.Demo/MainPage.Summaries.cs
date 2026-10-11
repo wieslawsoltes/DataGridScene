@@ -28,6 +28,7 @@ public sealed partial class MainPage
         if (navigation.Children[0] is TextBlock heading) heading.Height = 20;
         configure.Height = 32; configure.MinHeight = 32; configure.MaxHeight = 32;
         configure.HorizontalAlignment = HorizontalAlignment.Stretch;
+        _navigation.Child = null; // Detach before assigning a new XAML parent.
         _navigation.Child = new ScrollViewer
         {
             Content = navigation, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,

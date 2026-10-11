@@ -47,6 +47,16 @@ Summary keys are `Name` when supplied, otherwise `Field:Kind`. Keys must be uniq
 
 Count counts records, including null field values. Other built-in calculations skip nulls. Sum of an empty set is zero; average/minimum/maximum of an empty set is null; distinct count excludes null. Integral and decimal sums use checked decimal arithmetic. Double/float sums use compensated floating-point accumulation. Custom comparers also participate in minimum/maximum, distinct count and grouping equality.
 
+## Numeric identity and filter conversion
+
+Numeric ordering, grouping and distinct counts preserve adjacent and subnormal `double`/`float` values rather than rounding them through `decimal`. Comparisons within binary types use native floating-point ordering; mixed binary/decimal/integer comparisons use exact rational values. As a result, binary `0.1d` and decimal `0.1m` are not equal, whereas `0.5d` and `0.5m` are. NaNs compare equal to one another and precede other numeric values; signed zero compares equal. Sum/average behavior remains the accumulator behavior described above, not arbitrary-precision arithmetic.
+
+Group keys preserve legacy integer/decimal identities where their values are exact. Binary values that previously collided through decimal rounding use a distinct round-trip key. Previously saved collapse state for such incorrectly merged floating-point groups may no longer match and is ignored during restoration; decimal/integer keys are unchanged.
+
+Typed JSON fields and filter literals are parsed directly into their schema type. A query snapshot clones JSON tokens instead of prematurely converting them, so disposing the source `JsonDocument` does not invalidate it and tiny binary values survive JSON workspace round-trips. Untyped `GridValue.Unwrap` retains its decimal-first policy; supply field metadata for typed conversion.
+
+Filter bounds perform type conversion but do not invoke required-field or custom edit validators. For example, `[Quantity] > 0` is a valid filter even when edited quantities must be positive. Real edits still run all field and row validation before mutation.
+
 ## Presentation and sorting
 
 `ShowInColumn` chooses the display column independently of the source field. `ShowInGroupRow` and `ShowInGroupFooter` control placement. Inline mode appends text to the group label; aligned mode allocates lines under the relevant columns. Multiple items assigned to the same column stack vertically, and shared geometry determines row heights, clipped painting and pointer hits.
