@@ -26,6 +26,11 @@ public static partial class BrowserBridge
             grid.HorizontalOffset, grid.VerticalOffset, grid.RowHeight, grid.ShowBands, grid.DarkTheme,
             groupFooterCount = view?.Query.GroupFooterDisplay != GroupFooterDisplayMode.Hidden ? view?.Rows.Count(row => row.Kind == GridRowKind.GroupFooter) : 0,
             focusedRecord = grid.Selection.FocusedCell is { } focused && grid.Table!.Contains(focused.RecordId) ? new { id = focused.RecordId, values = grid.Table.Schema.Columns.Where(column => column.Field != "Trend").ToDictionary(column => column.Field, column => column.GetValue(grid.Table[focused.RecordId])) } : null,
+            columnFilter = grid.ActiveColumnFilter is { } filterEditor ? new { filterEditor.Field, filterEditor.SearchText,
+                filterEditor.ExceptionCount, filterEditor.Exclude, filterEditor.ValidationMessage, filterEditor.Results.HasMore,
+                filterEditor.Results.RecordsExamined, items = filterEditor.Results.Items, selected = filterEditor.VisibleSelection(),
+                actions = filterEditor.ActionBounds(page) } : null,
+            valueFilters = grid.ValueFilters,
             summaryEditor = grid.ActiveSummaryEditor is { } editor ? new { editor.EditingGroups, editor.ItemCount, editor.ValidationMessage, actions = grid.SummaryActionBounds(page) } : null,
             groups = view?.Groups.Select(group => new { group.Key, group.Value, group.Summaries, children = group.Children.Select(child => new { child.Key, child.Value, child.Summaries }) }).ToArray(),
             query = view?.Query, columns = grid.ColumnLayout?.Columns, filterTexts = grid.FilterTexts, expansion = view?.CaptureState(),
@@ -60,6 +65,7 @@ public static partial class BrowserBridge
             string Text(string key) => input.GetProperty(key).GetString() ?? "";
             switch (name)
             {
+                case "value-filter": grid.SetColumnValues(Text("field"), JsonSerializer.Deserialize<ColumnValueFilter>(input.GetProperty("filter").GetRawText(), Json)); break;
                 case "validate-controls": return JsonSerializer.Serialize(new { ok = true, report = ControlReviewChecks.Run() }, Json);
                 // Fixture/configuration commands do not simulate user edits or successful assertions.
                 case "fixture-value": grid.Table!.Apply([new(input.GetProperty("id").GetInt64(), Text("field"), input.GetProperty("value").Clone())]); break;
@@ -110,5 +116,5 @@ public static partial class BrowserBridge
         catch (Exception error) { return JsonSerializer.Serialize(new { ok = false, error = error.Message }, Json); }
     }
     [JSExport]
-    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.UpdateValidationSuite.RunAsync(), Json);
+    public static async Task<string> Validate() => JsonSerializer.Serialize(await Validation.ValueFilterValidation.RunAsync(), Json);
 }

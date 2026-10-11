@@ -300,29 +300,4 @@ public sealed partial class GridControl
         }
         flyout.ShowAt(_surface, new FlyoutShowOptions { Position = point });
     }
-    private void ShowColumnFilter(string field, Point point)
-    {
-        if (View is null || Table is null) return;
-        var content = new StackPanel { Spacing = 8, Width = 260 };
-        content.Children.Add(new TextBlock { Text = Table.Schema[field].Caption, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        var search = new TextBox { PlaceholderText = "Contains, =value, >=value, null…", Text = _filterTexts.GetValueOrDefault(field) ?? "" };
-        content.Children.Add(search);
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var apply = new Button { Content = "Apply" }; var clear = new Button { Content = "Clear" }; buttons.Children.Add(apply); buttons.Children.Add(clear); content.Children.Add(buttons);
-        var flyout = new Flyout { Content = content };
-        apply.Click += (_, _) => Safe(() => { SetColumnFilter(field, search.Text); flyout.Hide(); });
-        clear.Click += (_, _) => Safe(() => { SetColumnFilter(field, ""); flyout.Hide(); });
-        search.KeyDown += (_, args) => { if (args.Key == VirtualKey.Enter) { Safe(() => { SetColumnFilter(field, search.Text); flyout.Hide(); }); args.Handled = true; } };
-        var column = Table.Schema[field];
-        var values = Table.Records.Select(record => column.GetValue(record)).GroupBy(GridValue.Key).Select(group => group.First()).Take(101).ToArray();
-        content.Children.Add(new TextBlock { Text = values.Length > 100 ? "First 100 distinct values · use filter for others" : "Choose a value", FontSize = 11, TextWrapping = TextWrapping.Wrap });
-        var list = new StackPanel { Spacing = 2 };
-        foreach (var value in values.Take(100))
-        {
-            var button = new Button { Content = value is null ? "(Blanks)" : column.Display(value, Table.Schema.Culture), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(8, 4, 8, 4) };
-            button.Click += (_, _) => Safe(() => { SetColumnFilter(field, value is null ? "null" : "=" + Convert.ToString(value, Table.Schema.Culture)); flyout.Hide(); }); list.Children.Add(button);
-        }
-        content.Children.Add(new ScrollViewer { Content = list, MaxHeight = 260, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
-        flyout.ShowAt(_surface, new FlyoutShowOptions { Position = point });
-    }
 }
