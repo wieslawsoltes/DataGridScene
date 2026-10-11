@@ -1,7 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Text;
-using System.Text.RegularExpressions;
 
 namespace DataGridScene.Core;
 
@@ -34,14 +32,7 @@ public static class SummaryCalculator
                     throw new ArgumentException($"Unknown custom summary: {item.CustomAggregate}");
             }
             else if (item.CustomAggregate is not null) throw new ArgumentException("CustomAggregate requires the Custom summary kind.");
-            if (item.DisplayFormat is { } format)
-            {
-                if (format.Length > 4096 || CompositeFormat.Parse(format).MinimumArgumentCount > 3)
-                    throw new FormatException("Summary formats accept {0}=value, {1}=caption and {2}=kind, with at most 4,096 characters.");
-                foreach (Match match in Regex.Matches(format, @",\s*([+-]?\d+)", RegexOptions.CultureInvariant))
-                    if (!int.TryParse(match.Groups[1].Value, CultureInfo.InvariantCulture, out int alignment) || alignment < -4096 || alignment > 4096)
-                        throw new FormatException("Summary format alignment exceeds 4,096 characters.");
-            }
+            if (item.DisplayFormat is { } format) SummaryFormat.Validate(format);
         }
     }
 

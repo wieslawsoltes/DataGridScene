@@ -241,6 +241,6 @@ public static class SummaryValidationSuite
             using var view = new GridView(table); view.SetQuery(new() { Groups = [new("Group")], GroupSummaries = [new("Amount", SummaryKind.Sum, "sum") { ShowInGroupFooter = true }], GroupFooterDisplay = GroupFooterDisplayMode.ExpandedGroups, GroupSummarySorts = [new("Group", "sum", SortDirection.Descending)] });
             Equal(100200, view.Rows.Count); Equal(99, view.Groups[0].Value); Check(view.IndexOfRecord(99999) >= 0); Equal(100000, view.OrderedRecords.Count);
         });
-        return new(results.AsReadOnly(), clock.Elapsed.TotalMilliseconds);
+        return SummaryFormatValidation.Append(new(results.AsReadOnly(), clock.Elapsed.TotalMilliseconds));
     }
 }

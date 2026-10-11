@@ -55,7 +55,7 @@ Count counts records, including null field values. Other built-in calculations s
 
 `GroupSummarySorts` supports multiple criteria per grouping level. Each entry references a grouped field and a group-summary key. Ties fall back to group-value order. Removing a grouping column through the control removes its now-obsolete summary-sort descriptors. Editing a record recalculates aggregates and ordering; undo/redo follows the same path.
 
-Formats accept `{0}` for the result, `{1}` for the source caption and `{2}` for the calculation kind. Formatting uses the schema culture. Configuration and result formatting are checked during shaping before publishing a new view, not deferred until paint. Collection, format-length, alignment and JSON limits reject excessive input rather than silently truncating it.
+Formats accept `{0}` for the result, `{1}` for the source caption and `{2}` for the calculation kind. Formatting uses the schema culture. Configuration and result formatting are checked during shaping before publishing a new view, not deferred until paint. Standard numeric precision is limited to 1,024 digits before numeric formatting runs. Collection, format-length, alignment and JSON limits reject excessive input rather than silently truncating it.
 
 ## Reusable staged editor
 
