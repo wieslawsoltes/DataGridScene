@@ -8,14 +8,14 @@ There is **no complete functional, API, visual, accessibility or performance par
 
 | Area | Implemented in this repository | Remaining boundaries |
 |---|---|---|
-| Local data | Typed schema, stable IDs, value getters, local shaping, trim-safe object projection. | Full `ICollectionView`/binding-source semantics, live/incremental shaping, every provider integration. |
+| Local data | Typed schema, stable IDs, value getters, dependency-aware local updates, nested refresh/data-update batching, trim-safe object projection. | Full `ICollectionView`/binding-source semantics, incremental maintenance for shape-affecting edits, every provider integration. |
 | Sorting/search/filtering | Stable multi-sort, cross-column search, field filter row, AND/OR/NOT criteria, comparisons, IN/BETWEEN/null/string operations, visual filter builder. | Complete criteria language/function catalog, Excel-style multi-select filter UX, all locale/custom comparison edge cases. |
 | Grouping | Nested groups, date/value/first-letter intervals, collapse/expand, group-path persistence, per-level multi-summary sorting and configurable group footers. | Full group-row templates, custom grouping identity policies and all group selection/navigation options. |
 | Summaries | Independent totals/groups; count/sum/average/minimum/maximum/distinct; custom accumulator factories; compensated floating sums; inline or aligned summaries; multiple target-column lines; staged Uno summary editor. | Built-in running/window functions, full formatting/template parity, visual editing of secondary sort criteria, and asynchronous/incremental aggregate execution. |
 | Selection | Single row, multiple rows, sparse cells, rectangles, mouse drag, keyboard range, identity persistence and compressed snapshots. | Every DevExpress selection mode/event/drag-scroll behavior and UI automation selection provider. |
 | Editing | Native text/choice editors, conversion, required/custom row and cell validation, optimistic record versions, atomic batch paste, cell undo/redo. | Full mask/editor catalog, row edit forms, new-item row, insertion/deletion undo, all event and validation timing compatibility. |
 | Columns and bands | Reorder/resize/hide/pin, chooser, best fit, nested shared band headers, leaf-header spans, whole-band operations, indexed viewport lookup. | Multiple data-cell rows per record, arbitrary cell spanning/merging, complete band customization UI and template parity. |
-| Virtualization | Variable-height row indexing; clipped row/column drawing; cached left/middle/right column and band geometry. | Incremental view shaping and full remote/server-mode integration in the control; all heterogeneous automatic measurement modes. |
+| Virtualization | Adaptive uniform/sparse/dense row indexing; clipped row/column drawing; cached left/middle/right column and band geometry; direct custom-height updates. | Incremental view shaping and full remote/server-mode integration in the control; all heterogeneous automatic measurement modes. |
 | Master-detail | Expanded detail rows and a custom detail-data renderer. | Recursive independently editable child grids, full relation descriptors, async detail lifecycle and templates. |
 | Remote data | Independent local/HTTP page source contract, LRU cache, coalescing, cancellation and stale-query suppression. | The visual control still uses a materialized `GridTable`; no seamless server-mode grid, server group rows or remote editing. |
 | Conditional presentation | Programmatic style rules, badges, checkboxes, progress bars and sparklines. | Complete rule editor, icon sets, color scales, data bars and expression-backed formatting parity. |
@@ -35,3 +35,5 @@ Hosted GPU tests use Chromium's software graphics backend. A low CPU paint numbe
 ## Priority follow-up areas
 
 The largest remaining gaps are complete accessible grid providers, seamless asynchronous/server-mode data, recursive editable master-detail, advanced editors/new-item and row transactions, multi-row/cell-merged layout, and data-aware printing. Each should have independent package contracts plus actual browser interaction coverage before being marked implemented.
+
+Performance work includes a synthetic live-update sample, repeatable core microbenchmarks, and operation-count browser regressions. No claim of hardware GPU throughput, end-to-end frame latency, or complete server-mode behavior follows from these measurements. See [performance](performance.md).

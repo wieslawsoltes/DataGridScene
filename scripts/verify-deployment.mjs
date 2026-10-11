@@ -87,6 +87,26 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !dataGridScene.snapshot().summaryEditor);
   report.checks.push('public-summary-editor-open-and-cancel');
+  state = await page.evaluate(() => dataGridScene.snapshot());
+  const live = state.buttons['scenario-Live updates'];
+  assert.ok(live, 'Live update example must be deployed');
+  await page.mouse.click(live.x + live.width / 2, live.y + live.height / 2);
+  await page.waitForFunction(() => {
+    const state = dataGridScene.snapshot();
+    return state.scenario === 'Live updates' && state.recordCount === 100000 && state.performance.heightMode === 'Uniform';
+  });
+  const before = await page.evaluate(() => dataGridScene.snapshot());
+  const once = before.buttons['live-once'];
+  await page.mouse.click(once.x + once.width / 2, once.y + once.height / 2);
+  await page.waitForFunction(value => dataGridScene.snapshot().performance.valueUpdateCount > value, before.performance.valueUpdateCount);
+  const after = await page.evaluate(() => dataGridScene.snapshot());
+  assert.equal(after.performance.refreshCount, before.performance.refreshCount);
+  assert.equal(after.performance.rowGeometryBuildCount, before.performance.rowGeometryBuildCount);
+  assert.equal(after.performance.heightEntries, 0);
+  assert.ok(after.records.every(record => record.values.Company.startsWith('Live order ')));
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.screenshot({ path: path.join(output, 'deployed-live-updates.png') });
+  report.checks.push('public-live-update-without-reshaping');
   assert.deepEqual(report.pageErrors, []);
   report.checks.push('no-unhandled-page-errors');
   report.passed = true;

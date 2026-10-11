@@ -12,7 +12,9 @@ The view currently materializes local filtering/sorting/grouping synchronously. 
 
 The Uno surface derives from `SKCanvasElement`; drawing targets its supplied `SKCanvas`, not a bitmap of an HTML table. Native Uno editors are placed above the surface only when editing. HarfBuzz-shaped runs are cached with a fixed entry limit and disposed on eviction. The sample loads an existing Uno package typeface explicitly rather than assuming browser system-font lookup succeeds.
 
-Rows use a Fenwick-tree height index for prefix offsets and inverse offset lookup. Default-height initialization is linear; individual height updates and offset lookup are logarithmic. Rebuilding a view still rebuilds row geometry.
+Rows use an adaptive height index. Uniform rows require no per-row storage and have constant-time reset/offset lookup. Overrides first allocate sparse Fenwick deltas; high override occupancy switches to dense arrays. Variable-height operations remain logarithmic, apart from the one-time dense conversion. Clearing every override returns to uniform storage. Individual control row-height edits use stable-key lookup and do not rebuild the whole index.
+
+Display-only value changes retain shaped row and group identities and do not rebuild geometry. A full data-shaping change still publishes a new row sequence. In a plain uniform view, the control can reset its height index without scanning all data rows. Group/footer line counts are resolved once per row kind during geometry rebuilding, not once per group.
 
 Column layout builds separate cached left/middle/right panes. Each stores cumulative widths. A frame binary-searches the first intersecting column and enumerates only intersecting columns. Band runs are cached per header level and pane and queried in the same way. Structural changes, pinning, hiding and width changes rebuild these indexes; scrolling does not.
 
@@ -47,3 +49,13 @@ A group footer is a non-data `ViewRow`, not a fake record. Selection, navigation
 Custom summaries receive a fresh `IGridSummaryAccumulator` from the schema registry for each aggregate/group. Completion and disposal happen during data shaping, not painting. Built-in integral/decimal sums use checked decimal arithmetic; floating sums use Neumaier compensation while retaining ordinary IEEE behavior for nonfinite results.
 
 The staged `SummaryEditor` builds a query on Apply. The control applies only summary configuration, retaining base criteria and auto-filter-row state. It exposes the primary sort criterion per level and preserves existing secondary criteria unless the primary is replaced or cleared. Grouped CSV/HTML/XLSX exports currently export records in hierarchical order, not visual footer/header rows.
+
+## Dependency-aware updates and batching
+
+Owned `CellChanges` notifications describe successful atomic table edits. A view captures the fields that affect its active sort/group/filter/summary query. It skips reshaping only for contiguous table revisions with complete edit details and no dependency intersection. Computed fields can declare complete deterministic same-record dependencies; those are validated, transitively resolved and privately copied. Unknown getters, application predicates, custom accumulators and nonempty search use the conservative full-refresh path.
+
+`LastChangeKind` distinguishes Reset, Values and Expansion. `RowsRevision` changes only when publishing a row sequence. The control repaints Values notifications and refreshes the focused accessibility description without pruning selection or rebuilding heights. This does not add complete accessible-grid providers.
+
+Nested `DeferRefresh` scopes retain `Query` as the published query and expose pending configuration through `RequestedQuery`. Outermost disposal publishes one refresh, expansion update or values notification. The Uno `BeginDataUpdate` scope also defers geometry, redraw and control state notifications. Scopes are synchronous, single-writer and not rollback transactions; see [performance](performance.md) for exception and lifetime semantics.
+
+Selection mutation helpers maintain a cached selected-cell count across toggle, range, select-all, restore and prune operations. Consumers can enumerate IDs without copying the whole selection; snapshot-returning `SelectedIds` is retained for compatibility.
