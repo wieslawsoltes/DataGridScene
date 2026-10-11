@@ -71,7 +71,12 @@ try{
    await scenario();await command('focus',{id:10001,field:'OrderDate'});const before=(await snapshot()).records[0].values.OrderDate;
    await page.keyboard.press('F2');const s=await waitFor(s=>s.nativeCells.some(c=>c.controlType==='CalendarDatePicker'));const c=s.nativeCells.find(c=>c.controlType==='CalendarDatePicker');
    await page.mouse.click(s.origin.x+c.clipBounds.right-18,s.origin.y+c.clipBounds.y+c.clipBounds.height/2);await settle();
-   await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await waitFor(s=>s.records[0].values.OrderDate!==before&&s.canUndo);
+   // The calendar initially focuses its month header. Select an actual realized
+   // day instead of sending Enter to that header (which opens the year view).
+   const opened=await waitFor(s=>s.nativeCalendar.days.some(day=>day.date==='2026-01-02'));
+   const day=opened.nativeCalendar.days.find(day=>day.date==='2026-01-02').bounds;
+   await page.mouse.click(day.x+day.width/2,day.y+day.height/2);
+   await waitFor(s=>s.records[0].values.OrderDate.startsWith('2026-01-02')&&s.canUndo);
    await command('focus-grid');await action('undo');await waitFor(s=>s.records[0].values.OrderDate===before);
  });
  await test('native.no-unhandled-browser-errors',async()=>assert.deepEqual(errors,[]));

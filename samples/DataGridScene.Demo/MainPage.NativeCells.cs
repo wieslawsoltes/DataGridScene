@@ -56,4 +56,34 @@ public sealed partial class MainPage
         }
         RefreshStatus();
     }
+    // Read-only diagnostics over the actual popup visual tree. Tests click realized
+    // native day elements instead of assuming the popup initially focuses a date.
+    public object NativeCalendarSnapshot()
+    {
+        var days = new List<object>();
+        var popups = XamlRoot is null ? [] : VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot);
+        foreach (var popup in popups)
+        {
+            if (!popup.IsOpen || popup.Child is not FrameworkElement root) continue;
+            var origin = root.TransformToVisual(this).TransformPoint(new Windows.Foundation.Point());
+            var pending = new Stack<DependencyObject>(); pending.Push(root); int visited = 0;
+            while (pending.TryPop(out var element) && ++visited <= 4096)
+            {
+                if (element is FrameworkElement { Visibility: Visibility.Collapsed }) continue;
+                if (element is CalendarViewDayItem { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } day)
+                {
+                    var point = day.TransformToVisual(this).TransformPoint(new Windows.Foundation.Point());
+                    if (point.X >= origin.X && point.Y >= origin.Y &&
+                        point.X + day.ActualWidth <= origin.X + root.ActualWidth + 1 &&
+                        point.Y + day.ActualHeight <= origin.Y + root.ActualHeight + 1)
+                        days.Add(new { date = day.Date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                            bounds = new DataGridScene.Rendering.Skia.RectD(point.X, point.Y, day.ActualWidth, day.ActualHeight) });
+                }
+                for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+                    pending.Push(VisualTreeHelper.GetChild(element, i));
+            }
+        }
+        return new { days };
+    }
+
 }
