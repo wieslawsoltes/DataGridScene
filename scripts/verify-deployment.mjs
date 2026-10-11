@@ -68,6 +68,25 @@ try {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.screenshot({ path: path.join(output, 'deployed-nested-bands.png') });
   report.checks.push('public-nested-bands');
+  state = await page.evaluate(() => dataGridScene.snapshot());
+  const summaries = state.buttons['scenario-Group summaries'];
+  assert.ok(summaries, 'Group summary example must be deployed');
+  await page.mouse.click(summaries.x + summaries.width / 2, summaries.y + summaries.height / 2);
+  await page.waitForFunction(() => {
+    const state = dataGridScene.snapshot();
+    return state.scenario === 'Group summaries' && state.groupFooterCount === 18 && state.rendering.summaryCellsDrawn > 3;
+  });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.screenshot({ path: path.join(output, 'deployed-group-summaries.png') });
+  report.checks.push('public-group-summaries-and-footers');
+  state = await page.evaluate(() => dataGridScene.snapshot());
+  const configure = state.buttons.summaries;
+  await page.mouse.click(configure.x + configure.width / 2, configure.y + configure.height / 2);
+  await page.waitForFunction(() => dataGridScene.snapshot().summaryEditor?.actions['summary-apply']);
+  await page.screenshot({ path: path.join(output, 'deployed-summary-editor.png') });
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !dataGridScene.snapshot().summaryEditor);
+  report.checks.push('public-summary-editor-open-and-cancel');
   assert.deepEqual(report.pageErrors, []);
   report.checks.push('no-unhandled-page-errors');
   report.passed = true;

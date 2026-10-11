@@ -25,7 +25,7 @@ async function waitFor(predicate, timeout = 10000) {
   throw new Error('Summary assertion timed out: ' + JSON.stringify(await snapshot()));
 }
 async function click(name) {
-  const state = await snapshot(), rect = name.startsWith('summary-') ? state.summaryEditor?.actions[name] : state.buttons[name];
+  const state = await snapshot(), rect = name.startsWith('menu-summary-') ? state.summaryActions[name] : name.startsWith('summary-') ? state.summaryEditor?.actions[name] : state.buttons[name];
   assert.ok(rect, `Missing UI action ${name}`);
   assert.ok(rect.y >= 0 && rect.y + rect.height <= 1000, `${name} must be inside the viewport`);
   await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2); await settle();
@@ -113,7 +113,8 @@ try {
     await scenario(); const state = await snapshot(), root = visibleRow(state, 'Group');
     const cell = state.frame.summaryCells.find(cell => cell.rowIndex === root.index && cell.key === 'sales'); assert.ok(cell);
     await page.mouse.click(state.origin.x+cell.bounds.x+20, state.origin.y+cell.bounds.y+10, { button: 'right' });
-    await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+    await waitFor(s => s.summaryActions?.['menu-summary-Total · Sum ascending']);
+    await click('menu-summary-Total · Sum ascending');
     const sorted = await waitFor(s => s.query.groupSummarySorts.find(sort => sort.field === 'Region')?.direction === 0);
     const values = sorted.groups.map(g => g.summaries.sales); assert.deepEqual(values, [...values].sort((a,b)=>a-b));
   });
@@ -187,6 +188,19 @@ try {
     const result = await page.evaluate(query => dataGridScene.command('summaries', { query }), { ...before.query, groupSummarySorts: [{ field:'Region',summaryKey:'missing',direction:0 }] });
     assert.equal(result.ok, false); const after = await snapshot();
     assert.deepEqual(after.query, before.query); assert.deepEqual(after.groups, before.groups);
+  });
+  await test('summary.editor-preserves-secondary-criteria', async () => {
+    await scenario();
+    const state = await snapshot();
+    const sorts = [...state.query.groupSummarySorts, { field: 'Region', summaryKey: 'orders', direction: 0 }];
+    await configure({ groupSummarySorts: sorts });
+    const before = await snapshot();
+    await openEditor(); await type('summary-item-0-format', 'Rows: {0}'); await click('summary-apply');
+    const after = await waitFor(s => !s.summaryEditor);
+    assert.deepEqual(after.query.groupSummarySorts.filter(sort => sort.field === 'Region'),
+      before.query.groupSummarySorts.filter(sort => sort.field === 'Region'));
+    assert.deepEqual(after.query.groupSummarySorts.filter(sort => sort.field === 'Status'),
+      before.query.groupSummarySorts.filter(sort => sort.field === 'Status'));
   });
   await test('summary.no-unhandled-errors', async () => assert.deepEqual(errors, []));
 } catch (error) { results.push({ name:'summary.startup',passed:false,error:String(error.stack??error) }); console.error(error); }

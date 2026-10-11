@@ -26,7 +26,7 @@ public static partial class BrowserBridge
             grid.HorizontalOffset, grid.VerticalOffset, grid.RowHeight, grid.ShowBands, grid.DarkTheme,
             groupFooterCount = view?.Query.GroupFooterDisplay != GroupFooterDisplayMode.Hidden ? view?.Rows.Count(row => row.Kind == GridRowKind.GroupFooter) : 0,
             focusedRecord = grid.Selection.FocusedCell is { } focused && grid.Table!.Contains(focused.RecordId) ? new { id = focused.RecordId, values = grid.Table.Schema.Columns.Where(column => column.Field != "Trend").ToDictionary(column => column.Field, column => column.GetValue(grid.Table[focused.RecordId])) } : null,
-            summaryEditor = grid.ActiveSummaryEditor is { } editor ? new { editor.EditingGroups, editor.ItemCount, editor.ValidationMessage, actions = editor.ActionBounds(page) } : null,
+            summaryEditor = grid.ActiveSummaryEditor is { } editor ? new { editor.EditingGroups, editor.ItemCount, editor.ValidationMessage, actions = grid.SummaryActionBounds(page) } : null,
             groups = view?.Groups.Select(group => new { group.Key, group.Value, group.Summaries, children = group.Children.Select(child => new { child.Key, child.Value, child.Summaries }) }).ToArray(),
             query = view?.Query, columns = grid.ColumnLayout?.Columns, filterTexts = grid.FilterTexts, expansion = view?.CaptureState(),
             records = view?.FilteredRecords.Take(12).Select(record => new { record.Id, record.Version, values = grid.Table!.Schema.Columns.Where(column => column.Field != "Trend").ToDictionary(column => column.Field, column => column.GetValue(record)) }).ToArray(),
@@ -43,6 +43,7 @@ public static partial class BrowserBridge
                 }).ToArray()
             },
             rendering = new { grid.Renderer.SummaryCellsDrawn, grid.Renderer.CellsDrawn, grid.Renderer.RowsDrawn, grid.Renderer.DrawCount, grid.Renderer.CachedTextRuns, grid.Renderer.LastDrawMilliseconds, grid.Renderer.FontFamily },
+            summaryActions = grid.SummaryActionBounds(page),
             buttons = page.ActionBounds(), options = page.OptionValues()
         }, Json);
     }

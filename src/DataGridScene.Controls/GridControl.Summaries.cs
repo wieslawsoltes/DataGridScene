@@ -3,6 +3,7 @@ using DataGridScene.Rendering.Skia;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
 
 namespace DataGridScene.Controls;
@@ -10,6 +11,33 @@ namespace DataGridScene.Controls;
 public sealed partial class GridControl
 {
     public SummaryEditor? ActiveSummaryEditor { get; private set; }
+    private ContentDialog? _summaryDialog;
+    private MenuFlyout? _summaryMenu;
+    /// <summary>Bounds of real loaded summary controls for automation hosts; no simulated actions.</summary>
+    public IReadOnlyDictionary<string, RectD> SummaryActionBounds(UIElement relativeTo)
+    {
+        var result = ActiveSummaryEditor is null ? new Dictionary<string, RectD>() :
+            new Dictionary<string, RectD>(ActiveSummaryEditor.ActionBounds(relativeTo));
+        void Add(string key, FrameworkElement element)
+        {
+            if (!element.IsLoaded || element.Visibility != Visibility.Visible || element.ActualWidth <= 0 || element.ActualHeight <= 0) return;
+            var point = element.TransformToVisual(relativeTo).TransformPoint(new Point());
+            result[key] = new(point.X, point.Y, element.ActualWidth, element.ActualHeight);
+        }
+        void FindPrimary(DependencyObject parent)
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is Button button && (button.Name == "PrimaryButton" || Equals(button.Content, "Apply summaries"))) Add("summary-apply", button);
+                else FindPrimary(child);
+            }
+        }
+        if (_summaryDialog is not null) FindPrimary(_summaryDialog);
+        if (_summaryMenu is not null)
+            foreach (var item in _summaryMenu.Items.OfType<MenuFlyoutItem>()) Add("menu-summary-" + item.Text, item);
+        return result;
+    }
     public void ApplySummaries(GridQuery configuration)
     {
         RequireView();
@@ -29,18 +57,19 @@ public sealed partial class GridControl
         try
         {
             RequireView(); if (!CommitEdit()) return;
-            var editor = new SummaryEditor(Table!.Schema, View!.Query, groups);
-            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Summary editor", Content = editor, CloseButtonText = "Cancel" };
-            editor.ApplyRequested += (_, _) =>
+            var editor = new SummaryEditor(Table!.Schema, View!.Query, groups) { ShowApplyButton = false };
+            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Summary editor", Content = editor,
+                PrimaryButtonText = "Apply summaries", CloseButtonText = "Cancel" };
+            dialog.PrimaryButtonClick += (_, args) =>
             {
-                try { ApplySummaries(editor.BuildQuery()); dialog.Hide(); }
-                catch (Exception error) { editor.ValidationMessage = error.Message; }
+                try { ApplySummaries(editor.BuildQuery()); }
+                catch (Exception error) { args.Cancel = true; editor.ValidationMessage = error.Message; }
             };
-            ActiveSummaryEditor = editor; Changed();
+            _summaryDialog = dialog; ActiveSummaryEditor = editor; Changed();
             await dialog.ShowAsync();
         }
         catch (Exception error) { Report(error); }
-        finally { ActiveSummaryEditor = null; Changed(); }
+        finally { _summaryDialog = null; ActiveSummaryEditor = null; Changed(); }
     }
     public void SortGroupBySummary(string groupField, string? summaryKey, SortDirection direction = SortDirection.Ascending)
     {
@@ -66,6 +95,8 @@ public sealed partial class GridControl
                 menu.Items.Add(Menu(caption + " descending", () => SortGroupBySummary(group.Field, summary.Key, SortDirection.Descending)));
             }
         }
+        _summaryMenu = menu;
+        menu.Closed += (_, _) => { if (ReferenceEquals(_summaryMenu, menu)) _summaryMenu = null; };
         menu.ShowAt(_surface, new FlyoutShowOptions { Position = point });
         return true;
     }

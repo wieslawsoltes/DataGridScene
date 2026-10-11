@@ -13,6 +13,8 @@ public sealed class SummaryEditor : UserControl
 {
     private readonly GridSchema _schema;
     private readonly GridQuery _query;
+    private readonly Button _applyButton;
+    public bool ShowApplyButton { get => _applyButton.Visibility == Visibility.Visible; set => _applyButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; }
     private readonly ComboBox _scope;
     private readonly ComboBox _display;
     private readonly ComboBox _footers;
@@ -32,7 +34,7 @@ public sealed class SummaryEditor : UserControl
     public SummaryEditor(GridSchema schema, GridQuery query, bool groups = true)
     {
         _schema = schema; _query = QuerySnapshot.Capture(query, schema);
-        var root = new StackPanel { Spacing = 10, MinWidth = 520, MaxWidth = 660 };
+        var root = new StackPanel { Spacing = 10, MaxWidth = 660 };
         _scope = Combo("scope", new[] { "Total summaries", "Group summaries" }, groups ? 1 : 0);
         _display = Combo("display", Enum.GetValues<GroupSummaryDisplayMode>(), (int)query.GroupSummaryDisplay);
         _footers = Combo("footers", Enum.GetValues<GroupFooterDisplayMode>(), (int)query.GroupFooterDisplay);
@@ -46,7 +48,9 @@ public sealed class SummaryEditor : UserControl
             list.Add(new ItemEditor(this, new(column.Field, SummaryKind.Count, Guid.NewGuid().ToString("N")), EditingGroups));
             Rebuild();
         });
-        header.Children.Add(add); root.Children.Add(header);
+        header.Children.Add(add);
+        _applyButton = ActionButton("apply", "Apply summaries", () => ApplyRequested?.Invoke(this, EventArgs.Empty));
+        header.Children.Add(_applyButton); root.Children.Add(header);
         root.Children.Add(new TextBlock { Text = "Each summary has a source field, calculation, display column and optional format.", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         root.Children.Add(new ScrollViewer { Content = _items, Height = 300, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         var options = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
@@ -54,19 +58,24 @@ public sealed class SummaryEditor : UserControl
         root.Children.Add(new TextBlock { Text = "Sort each grouping level by a summary", FontSize = 12 });
         root.Children.Add(new ScrollViewer { Content = _sortPanel, MaxHeight = 105, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         root.Children.Add(_error);
-        root.Children.Add(ActionButton("apply", "Apply summaries", () => ApplyRequested?.Invoke(this, EventArgs.Empty)));
-        Content = root;
+        Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         foreach (var item in query.Summaries) _totals.Add(new ItemEditor(this, item, false));
         foreach (var item in query.EffectiveGroupSummaries) _groups.Add(new ItemEditor(this, item, true));
         foreach (var group in query.Groups)
         {
             var existing = query.GroupSummarySorts.FirstOrDefault(sort => sort.Field.Equals(group.Field, StringComparison.OrdinalIgnoreCase));
             _sortKeys[group.Field] = existing?.SummaryKey;
-            var summary = new ComboBox { MinWidth = 200 };
+            var summary = new ComboBox { MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
             var direction = Combo("sort-direction-" + group.Field, Enum.GetValues<SortDirection>(), (int)(existing?.Direction ?? SortDirection.Ascending));
             _actions["sort-summary-" + group.Field] = summary;
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            row.Children.Add(new TextBlock { Text = schema[group.Field].Caption, Width = 95, VerticalAlignment = VerticalAlignment.Center });
+            direction.MinWidth = 0; direction.HorizontalAlignment = HorizontalAlignment.Stretch;
+            var row = new Grid { ColumnSpacing = 8 };
+            row.ColumnDefinitions.Add(new() { Width = new GridLength(85) });
+            row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            row.Children.Add(new TextBlock { Text = schema[group.Field].Caption, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
+            Grid.SetColumn(summary, 1); Grid.SetColumn(direction, 2);
             row.Children.Add(summary); row.Children.Add(direction); _sortPanel.Children.Add(row);
             _sorts.Add((group.Field, summary, direction));
             summary.SelectionChanged += (_, _) => { if (summary.SelectedItem is SortChoice choice) _sortKeys[group.Field] = choice.Key; };
@@ -94,6 +103,7 @@ public sealed class SummaryEditor : UserControl
     private void Rebuild()
     {
         _items.Children.Clear();
+        foreach (string key in _actions.Keys.Where(key => key.StartsWith("item-", StringComparison.Ordinal)).ToArray()) _actions.Remove(key);
         var list = EditingGroups ? _groups : _totals;
         for (int i = 0; i < list.Count; i++)
         {
@@ -128,7 +138,7 @@ public sealed class SummaryEditor : UserControl
             string[] fields = owner._schema.Columns.Select(column => column.Field).ToArray();
             ComboBox Choice(string id, object values, object? selected, double width = 145)
             {
-                var combo = new ComboBox { ItemsSource = values, SelectedItem = selected, Width = width, MinWidth = 0 };
+                var combo = new ComboBox { ItemsSource = values, SelectedItem = selected, MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
                 Actions[id] = combo; AutomationProperties.SetName(combo, id); return combo;
             }
             _field = Choice("field", fields, owner._schema[item.Field].Field);
@@ -140,11 +150,14 @@ public sealed class SummaryEditor : UserControl
             _row = new CheckBox { Content = "Group row", IsChecked = item.ShowInGroupRow, MinHeight = 26 };
             _footer = new CheckBox { Content = "Group footer", IsChecked = item.ShowInGroupFooter, MinHeight = 26 };
             Actions["row"] = _row; Actions["footer"] = _footer;
-            var fieldsRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
+            var fieldsRow = new Grid { ColumnSpacing = 7 };
+            for (int i = 0; i < 3; i++) fieldsRow.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            fieldsRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            Grid.SetColumn(_kind, 1); Grid.SetColumn(_target, 2);
             fieldsRow.Children.Add(_field); fieldsRow.Children.Add(_kind); fieldsRow.Children.Add(_target);
             var remove = new Button { Content = "×", MinWidth = 28, Padding = new Thickness(5) }; Actions["remove"] = remove;
             remove.Click += (_, _) => { (group ? owner._groups : owner._totals).Remove(this); owner.Rebuild(); };
-            fieldsRow.Children.Add(remove);
+            Grid.SetColumn(remove, 3); fieldsRow.Children.Add(remove);
             var visibility = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
             if (group) { visibility.Children.Add(_row); visibility.Children.Add(_footer); }
             visibility.Children.Add(_custom);
@@ -163,6 +176,24 @@ public sealed class SummaryEditor : UserControl
             CustomAggregate = _kind.SelectedItem is SummaryKind.Custom ? (string?)_custom.SelectedItem : null
         };
     }
+    private IReadOnlyList<GroupSummarySortDescriptor> BuildSorts()
+    {
+        var available = _groups.Select(item => item.Key).ToHashSet(StringComparer.Ordinal);
+        var output = new List<GroupSummarySortDescriptor>();
+        foreach (var (field, _, direction) in _sorts)
+        {
+            string? key = _sortKeys.GetValueOrDefault(field);
+            if (key is null) continue;
+            output.Add(new(field, key, (SortDirection)direction.SelectedItem));
+            var previous = _query.GroupSummarySorts.Where(sort => sort.Field.Equals(field, StringComparison.OrdinalIgnoreCase)).ToArray();
+            // This compact UI edits the primary criterion. Preserve existing secondary
+            // criteria when editing formats/placement or changing the primary direction.
+            // Choosing a different primary (or value order) intentionally replaces them.
+            if (previous.FirstOrDefault()?.SummaryKey == key)
+                output.AddRange(previous.Skip(1).Where(sort => available.Contains(sort.SummaryKey)));
+        }
+        return output.AsReadOnly();
+    }
     public GridQuery BuildQuery()
     {
         var query = _query with
@@ -170,8 +201,7 @@ public sealed class SummaryEditor : UserControl
             Summaries = _totals.Select(item => item.Build()).ToArray(), GroupSummaries = _groups.Select(item => item.Build()).ToArray(),
             GroupSummaryDisplay = (GroupSummaryDisplayMode)_display.SelectedItem,
             GroupFooterDisplay = (GroupFooterDisplayMode)_footers.SelectedItem,
-            GroupSummarySorts = _sorts.Where(sort => _sortKeys.GetValueOrDefault(sort.Field) is not null)
-                .Select(sort => new GroupSummarySortDescriptor(sort.Field, _sortKeys[sort.Field]!, (SortDirection)sort.Direction.SelectedItem)).ToArray()
+            GroupSummarySorts = BuildSorts()
         };
         return QuerySnapshot.Capture(query, _schema);
     }
