@@ -47,15 +47,15 @@ npm run test:browser
 
 Click headers to cycle sorting; Shift-click adds a secondary sort. Drag headers to reorder or group, and drag separators to resize. Right-click a header for freeze/hide/filter options. Select **Nested bands** to see hierarchical shared headers; drag a band to reorder it, drag its boundary to resize its visible columns proportionally, or right-click it to freeze/hide/best-fit the whole band.
 
-F2/Enter starts editing, Enter commits, and Escape cancels. Shift extends selection, Ctrl toggles cells or rows, and dragging selects a range. Ctrl+C/V copies/pastes; Ctrl+Z/Y undo/redo cell edits; F4 expands details. The options panel selects row or cell selection modes.
+F2/Enter starts editing, Enter commits, and Escape cancels. Shift extends selection, Ctrl toggles cells or rows, and dragging selects a range. Ctrl+C/V copies/pastes; Ctrl+Z/Y undo/redo cell edits; F4 expands details. The options panel selects row or cell selection modes. **Group summaries** demonstrates nested groups sorted by sales, separate group totals and averages, and group footers. **Configure summaries…** opens the reusable staged editor; right-click a summary to sort by its value. See [summary APIs](docs/summaries.md).
 
 Save/restore includes column order, widths, pinning, band paths, filters, search, groups, summaries, row heights, theme, scroll position, expansion, and optional compressed selection/focus/anchor state. See [workspace APIs](docs/workspace.md).
 
 ## Validation and deployment
 
-The shared C# suite currently contains **151 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline checks plus 16 band/workspace checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
+The shared C# suite currently contains **219 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace and 20 summary checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
 
-CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell and opens the nested-band sample.
+CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell, opens the nested-band and group-summary samples, and opens/cancels the summary editor.
 
 The renderer draws into Uno's Skia canvas. Hardware acceleration depends on the host and graphics driver. Hosted browser tests use ANGLE/SwiftShader, so their timings are **software-backend correctness evidence, not hardware GPU benchmarks**. The sample displays CPU paint time, not end-to-end frame or input latency.
 

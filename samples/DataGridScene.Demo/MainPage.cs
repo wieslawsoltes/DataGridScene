@@ -57,6 +57,7 @@ public sealed partial class MainPage : Page
         var statusBar = new Border { Background = Brush("#f3f3f3"), BorderThickness = new Thickness(0, 1, 0, 0), BorderBrush = Brush("#dedede"), Padding = new Thickness(14, 0, 14, 0), Child = _status };
         Grid.SetRow(statusBar, 3); Grid.SetColumnSpan(statusBar, 3); _shell.Children.Add(statusBar); Content = _shell;
         DataGrid.DetailProvider = OrderData.Details;
+        InitializeSummaryUI();
         DataGrid.StateChanged += (_, _) => RefreshStatus();
         DataGrid.Error += (_, message) => { Message = message; RefreshStatus(); };
         DataGrid.SearchRequested += (_, _) => _search.Focus(FocusState.Keyboard);
@@ -300,7 +301,7 @@ public sealed partial class MainPage : Page
     }
     private async void RunValidation()
     {
-        try { var report = await DataGridScene.Validation.WorkspaceValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
+        try { var report = await DataGridScene.Validation.SummaryValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
         catch (Exception error) { SetMessage(error.Message); }
     }
     public void Export(string format)

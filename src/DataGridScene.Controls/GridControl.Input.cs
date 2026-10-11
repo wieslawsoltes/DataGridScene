@@ -249,6 +249,7 @@ public sealed partial class GridControl
     }
     private void ShowContext(GridHit hit, Point point)
     {
+        if (TrySummaryContext(hit, point)) return;
         if (hit.Region == HitRegion.Band && hit.BandKey is not null) { ShowBandContext(hit.BandKey, point); return; }
         var flyout = new MenuFlyout();
         if (hit.Field is string field && hit.Region is HitRegion.Header or HitRegion.Summary)
@@ -257,6 +258,7 @@ public sealed partial class GridControl
             {
                 foreach (var kind in Enum.GetValues<SummaryKind>())
                 {
+                    if (kind == SummaryKind.Custom) continue;
                     if (kind is SummaryKind.Sum or SummaryKind.Average && !GridValue.IsNumericType(Table!.Schema[field].DataType)) continue;
                     flyout.Items.Add(Menu(kind.ToString(), () => View!.SetQuery(View.Query with { Summaries = View.Query.Summaries.Where(summary => summary.Field != field).Append(new SummaryDescriptor(field, kind)).ToArray() })));
                 }

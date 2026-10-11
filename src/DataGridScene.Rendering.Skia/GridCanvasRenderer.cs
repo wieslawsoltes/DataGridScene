@@ -7,7 +7,7 @@ using System.Globalization;
 namespace DataGridScene.Rendering.Skia;
 
 /// <summary>Paints only visible rows and columns into a caller-owned Skia canvas; no bitmap copy or UI dependency.</summary>
-public sealed class GridCanvasRenderer : IDisposable
+public sealed partial class GridCanvasRenderer : IDisposable
 {
     private readonly SKPaint _fill = new() { IsAntialias = false };
     private readonly SKPaint _stroke = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1 };
@@ -65,7 +65,7 @@ public sealed class GridCanvasRenderer : IDisposable
     }
     public void Draw(SKCanvas canvas, GridFrame frame)
     {
-        var watch = Stopwatch.StartNew(); CellsDrawn = RowsDrawn = 0; DrawCount++;
+        var watch = Stopwatch.StartNew(); CellsDrawn = RowsDrawn = SummaryCellsDrawn = 0; DrawCount++;
         canvas.Save(); canvas.ClipRect(new SKRect(0, 0, (float)frame.Width, (float)frame.Height));
         Fill(canvas, 0, 0, frame.Width, frame.Height, Palette.Background);
         DrawBody(canvas, frame); DrawHeaders(canvas, frame); DrawFooter(canvas, frame);
@@ -144,14 +144,8 @@ public sealed class GridCanvasRenderer : IDisposable
         for (int index = frame.VisibleRows.Start; index < frame.VisibleRows.EndExclusive; index++)
         {
             var row = frame.View.Rows[index]; var bounds = frame.RowBounds(index); RowsDrawn++;
-            if (row.Kind == GridRowKind.Group)
-            {
-                Fill(canvas, 0, bounds.Y, frame.Width, bounds.Height, Palette.Group);
-                Chevron(canvas, 18 + row.Depth * 16, bounds.Y + bounds.Height / 2, frame.View.IsExpanded(row.Key), Palette.Foreground);
-                var group = row.Group!; string value = group.Value is null ? "(Blanks)" : frame.View.Table.Schema[group.Field].Display(group.Value, frame.View.Table.Schema.Culture);
-                Text(canvas, $"{frame.View.Table.Schema[group.Field].Caption}: {value}  ({group.Records.Count:N0} records)", 34 + row.Depth * 16, bounds.Y + bounds.Height / 2, frame.Width - 60 - row.Depth * 16, bold: true);
-                Line(canvas, 0, bounds.Bottom - 0.5, frame.Width, bounds.Bottom - 0.5, Palette.Line); continue;
-            }
+            if (row.Kind is GridRowKind.Group or GridRowKind.GroupFooter)
+            { DrawGroupSummaryRow(canvas, frame, index, row, bounds); continue; }
             if (row.Kind == GridRowKind.Detail) { DrawDetail(canvas, row.Record!, bounds); continue; }
             var record = row.Record!;
             bool selected = frame.Selection.Mode != GridSelectionMode.Cells && frame.Selection.Contains(record.Id);
@@ -242,24 +236,6 @@ public sealed class GridCanvasRenderer : IDisposable
                 Text(canvas, column < detail.Rows[row].Count ? detail.Rows[row][column] : "", 54 + column * width, bounds.Y + 48 + row * 23, width - 16);
         }
         Line(canvas, 0, bounds.Bottom - 0.5, bounds.Width, bounds.Bottom - 0.5, Palette.Line);
-    }
-    private void DrawFooter(SKCanvas canvas, GridFrame frame)
-    {
-        Fill(canvas, 0, frame.FooterTop, frame.Width, frame.Height - frame.FooterTop, Palette.Footer);
-        Line(canvas, 0, frame.FooterTop + 0.5, frame.Width, frame.FooterTop + 0.5, Palette.Line);
-        foreach (var slot in frame.Columns.Slots)
-        {
-            canvas.Save(); canvas.ClipRect(new SKRect((float)slot.ClipLeft, (float)frame.FooterTop, (float)slot.ClipRight, (float)frame.Height));
-            var summary = frame.View.Query.Summaries.FirstOrDefault(item => item.Field.Equals(slot.Field, StringComparison.OrdinalIgnoreCase));
-            if (summary is not null && frame.View.Summaries.TryGetValue(summary.Key, out var value))
-            {
-                var column = frame.View.Table.Schema[slot.Field];
-                string text = summary.Kind is SummaryKind.Count or SummaryKind.DistinctCount ? $"Count: {value:N0}" : $"{(summary.Kind == SummaryKind.Sum ? "Σ" : summary.Kind.ToString())}: {column.Display(value, frame.View.Table.Schema.Culture)}";
-                Text(canvas, text, slot.X + 8, frame.FooterTop + (frame.Height - frame.FooterTop) / 2, slot.Width - 16, bold: true, alignment: column.Alignment);
-            }
-            Line(canvas, slot.X + slot.Width - 0.5, frame.FooterTop, slot.X + slot.Width - 0.5, frame.Height, Palette.Line);
-            canvas.Restore();
-        }
     }
     public void Dispose() { _text.Dispose(); _fill.Dispose(); _stroke.Dispose(); _textPaint.Dispose(); }
 }

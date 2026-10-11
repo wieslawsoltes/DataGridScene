@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:browser": "node tests/browser/run.mjs && node tests/browser/workspace.mjs",
+    "test:browser": "node tests/browser/run.mjs && node tests/browser/workspace.mjs && node tests/browser/summaries.mjs",
     "prepare:site": "node scripts/prepare-site.mjs"
   },
   "devDependencies": {
