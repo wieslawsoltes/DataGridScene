@@ -281,6 +281,10 @@ public sealed partial class GridControl
                 if (_nativeEditCell is { } edit) { fields = new(_cellFields, StringComparer.OrdinalIgnoreCase); fields.Add(edit.Field); }
                 var placements = NativeCellGeometry.Collect(frame, fields, MaximumRealizedCellControls)
                     .Where(cell => _cellFields.Contains(cell.Address.Field) || cell.Address == _nativeEditCell).ToArray();
+                // Prune before invoking application code: a selector that throws midway
+                // through repeated scrolls must not accumulate offscreen cached choices.
+                var visible = placements.Select(cell => cell.Address).ToHashSet();
+                PruneTemplateChoices(visible);
                 var selected = new Dictionary<CellAddress, GridCellTemplate>();
                 // Resolve every candidate before changing hosts. Versioned cache entries
                 // include null (canvas fallback); selectors never run from Draw().
@@ -294,8 +298,6 @@ public sealed partial class GridControl
                         ?? ResolveCellTemplate(address, editing: false);
                     if (template is not null) selected.Add(address, template);
                 }
-                var visible = placements.Select(cell => cell.Address).ToHashSet();
-                PruneTemplateChoices(visible);
                 placements = placements.Where(cell => selected.ContainsKey(cell.Address)).ToArray();
                 GridCellTemplate Template(CellAddress address) => selected[address];
                 var wanted = selected.Keys.ToHashSet();

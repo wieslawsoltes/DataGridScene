@@ -64,7 +64,7 @@ public sealed partial class MainPage
         RefreshStatus();
     }
     private bool _adaptiveTemplates, _templateFault;
-    public bool AdaptiveTemplatesEnabled => _adaptiveTemplates;
+    public bool AdaptiveTemplatesEnabled => Scenario == "Native controls" && _adaptiveTemplates;
     public void SetAdaptiveCellTemplates(bool enabled)
     {
         if (!DataGrid.CommitEdit()) return;

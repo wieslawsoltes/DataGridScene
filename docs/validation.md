@@ -37,7 +37,7 @@ The desktop CI job builds the shared Uno desktop target. It does not currently r
 
 ## Pages
 
-After successful main validation, Publish Pages downloads that run's browser artifact rather than rebuilding different sources. Its deployment verification compares the public `build.json` commit, starts the actual WASM app in Chromium, performs a native edit and undo, opens the nested-band and group-summary scenarios, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input. Verification reports and a screenshot are retained as `deployed-site-verification`.
+After successful main validation, Publish Pages downloads that run's browser artifact rather than rebuilding different sources. Its deployment verification compares the public `build.json` commit, starts the actual WASM app in Chromium, performs a native edit and undo, opens the nested-band and group-summary scenarios, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input. The complete 14-scenario selector browser suite then runs against the public URL. Verification reports and screenshots are retained as `deployed-site-verification`.
 
 A failed deployment verification does not undo publication; it marks the deployment workflow unsuccessful and must be investigated before claiming the public site is verified.
 

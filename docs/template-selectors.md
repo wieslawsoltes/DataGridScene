@@ -44,3 +44,17 @@ The host paints a hit-test-transparent focus/error border above ordinary child c
 Unchanged `GridCellEditBuffer.TryCommit` and `Refresh` no longer emit unconditional PropertyChanged notifications. Repeated grid commands therefore do not rebind every visible native cell even when nothing changed. Identity validation still runs for no-op commits: removed/replaced records are not accepted simply because the buffer is pristine. Read-only and external-value changes notify when their state actually changes.
 
 The shared managed/WASM inventory is 351 contracts. The additional selector browser harness has 14 scenarios, alongside the previous 140; the embedded native API suites still contain 33 contracts. The exact commit's CI reports determine pass/fail status. See [native-cell limitations](native-cells.md) for double-based editors, dates, trusted callbacks, explicit row heights and the remaining editor/automation/platform boundaries.
+
+## Reproducible no-op operation counts
+
+The identical compiled consumer in `tests/benchmarks/NativeBufferWorkload.cs` ran against the CI-built prior Core DLL at `80bbccae` and the reviewed Core source compiled with Roslyn on .NET 10.0.12. The harness performs 1,000 pristine commit/refresh pairs, excludes initial buffer construction from getter counts, and verifies the same stored value and clean state.
+
+| Work | Previous implementation | Reviewed implementation |
+|---|---:|---:|
+| PropertyChanged notifications | 2,000 | 0 |
+| Application value getter calls | 1,000 | 0 |
+| Stored value | unchanged | unchanged |
+
+These are deterministic operation counts, not timing estimates. The new contract suite independently checks notification suppression, read-only transitions, changed records and rejected replaced identities. To run the standalone caller, use its source as the Program.cs of a net10.0 console project referencing the Core package to compare. It is outside the main test project's compile glob.
+
+Pages deployment also runs the complete 14-scenario selector browser harness on the actual public URL, after the original deployment marker and interaction checks. Its results and screenshots are retained in the deployed-site-verification artifact.

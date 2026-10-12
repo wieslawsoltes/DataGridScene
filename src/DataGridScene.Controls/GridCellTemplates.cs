@@ -15,7 +15,7 @@ namespace DataGridScene.Controls;
 /// on activation, sliders on release. Binding/recycling never writes data.</summary>
 public static class GridCellTemplates
 {
-    private sealed class State { public bool Binding; public string? NumberText; }
+    private sealed class State { public bool Binding; public string? NumberText; public SolidColorBrush? Background; }
     private static readonly ConditionalWeakTable<FrameworkElement, State> States = new();
     private static GridCellEditBuffer? Buffer(FrameworkElement element) =>
         !States.GetOrCreateValue(element).Binding && element.DataContext is GridCellEditBuffer { IsActive: true } buffer ? buffer : null;
@@ -155,9 +155,13 @@ public static class GridCellTemplates
         if (element is not Control control) return;
         // Native controls cover the canvas background while focused. Keep the same
         // selection tint as the grid and let the host draw the focus outline above it.
-        control.Background = new SolidColorBrush(state.IsSelected
+        var color = state.IsSelected
             ? state.IsDark ? Windows.UI.Color.FromArgb(255, 40, 72, 100) : Windows.UI.Color.FromArgb(255, 204, 228, 247)
-            : Microsoft.UI.Colors.Transparent);
+            : Microsoft.UI.Colors.Transparent;
+        var binding = States.GetOrCreateValue(element);
+        binding.Background ??= new SolidColorBrush(color);
+        if (binding.Background.Color != color) binding.Background.Color = color;
+        if (!ReferenceEquals(control.Background, binding.Background)) control.Background = binding.Background;
     }
     private static bool SameNumber(object? value, double number, CultureInfo culture)
     {
