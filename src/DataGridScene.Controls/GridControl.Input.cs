@@ -21,10 +21,14 @@ public sealed partial class GridControl
     private CellAddress? _previousCell;
     private GridTable? _previousTable;
     private bool _validDoubleTap;
+    // Keep press/release/gesture recognition on the same element. A native display
+    // cannot hand capture to its sibling canvas without splitting its double tap.
+    private UIElement? _cellCaptureOwner;
     private void ResetPointerState()
     {
         _pressedCell = _previousCell = null;
         _previousTable = null; _validDoubleTap = false;
+        ReleaseCellCapture();
         _pressedHeader = _pressedBand = null; _bandWeights = null; _resizing = _dragging = false;
         Renderer.DragMarkerX = null; Renderer.HoveredColumn = null; Renderer.HoveredRecordId = null;
     }
@@ -40,7 +44,7 @@ public sealed partial class GridControl
         _surface.PointerMoved += SurfaceMoved;
         _surface.PointerExited += (_, _) => UpdateHover(null);
         _surface.PointerReleased += SurfaceReleased;
-        _surface.PointerCaptureLost += (_, _) => { _pressedHeader = _pressedBand = null; _bandWeights = null; _pressedCell = null; _resizing = _dragging = false; Renderer.DragMarkerX = null; Redraw(); };
+        _surface.PointerCaptureLost += SurfaceCaptureLost;
         _surface.PointerWheelChanged += (_, args) =>
         {
             var point = args.GetCurrentPoint(_surface);
@@ -80,7 +84,7 @@ public sealed partial class GridControl
         // editor's input host is attached. It is inside the current editor, not an
         // outside click: do not commit and immediately close the just-opened editor.
         var initialHit = Frame.HitTest(point.X, point.Y);
-        if (RefocusEditor(initialHit)) { args.Handled = true; return; }
+        if (RefocusEditor(initialHit) || RefocusNativeEditor(initialHit)) { args.Handled = true; return; }
         if (!CommitEdit()) { args.Handled = true; return; }
         Focus(FocusState.Pointer);
         var hit = Frame.HitTest(point.X, point.Y);
@@ -119,7 +123,9 @@ public sealed partial class GridControl
                     Selection.Select(View, address, Shift(args.KeyModifiers), Control(args.KeyModifiers), SelectionFields);
                     if (!Control(args.KeyModifiers) && pointer.PointerDevice.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Mouse)
                     {
-                        _pressedCell = address; _pressPoint = point; _surface.CapturePointer(args.Pointer);
+                        _pressedCell = address; _pressPoint = point;
+                        _cellCaptureOwner = sender as UIElement ?? _surface;
+                        _cellCaptureOwner.CapturePointer(args.Pointer);
                     }
                     var column = Table!.Schema[hit.Field];
                     if (!IsReadOnly && !column.IsReadOnly && column.Presentation == ColumnPresentation.CheckBox)
@@ -128,6 +134,18 @@ public sealed partial class GridControl
             }
         });
         args.Handled = true;
+    }
+    private void ReleaseCellCapture()
+    {
+        var owner = _cellCaptureOwner; _cellCaptureOwner = null;
+        _pressedCell = null; owner?.ReleasePointerCaptures();
+    }
+    private void SurfaceCaptureLost(object sender, PointerRoutedEventArgs args)
+    {
+        if (ReferenceEquals(sender, _cellCaptureOwner)) { _cellCaptureOwner = null; _pressedCell = null; }
+        if (!ReferenceEquals(sender, _surface)) return;
+        _pressedHeader = _pressedBand = null; _bandWeights = null;
+        _resizing = _dragging = false; Renderer.DragMarkerX = null; Redraw();
     }
     private void UpdateHover(GridHit? hit)
     {
@@ -171,7 +189,7 @@ public sealed partial class GridControl
         if (TryBandReleased(args.GetCurrentPoint(_surface).Position, args)) { args.Handled = true; return; }
         if (_pressedCell is not null)
         {
-            _pressedCell = null; _surface.ReleasePointerCapture(args.Pointer); args.Handled = true; return;
+            _pressedCell = null; ReleaseCellCapture(); args.Handled = true; return;
         }
         var pressed = _pressedHeader;
         if (pressed?.Field is not string field || Frame is null) return;
