@@ -96,8 +96,7 @@ public sealed partial class GridControl : UserControl, IDisposable
         InitializeFilterPanel(); InitializeCellControls();
         Content = _root;
         _surface.SizeChanged += (_, _) => UpdateGeometry();
-        _vertical.ValueChanged += (_, args) => { if (!_updatingScroll) ScrollTo(_offsetX, args.NewValue); };
-        _horizontal.ValueChanged += (_, args) => { if (!_updatingScroll) ScrollTo(args.NewValue, _offsetY); };
+        InitializeScrolling();
         Selection.Changed += SelectionChanged;
         KeyDown += GridKeyDown;
         WirePointerInput();
@@ -210,18 +209,10 @@ public sealed partial class GridControl : UserControl, IDisposable
     {
         if (_dataUpdateDepth > 0) { _geometryPending = true; return; }
         if (_disposed) return;
-        if (View is null || ColumnLayout is null) { Frame = null; _frameCache.Clear(); Redraw(); return; }
+        if (View is null || ColumnLayout is null) { Frame = null; _offsetX = _offsetY = 0; _frameCache.Clear(); UpdateScrollBars(); Redraw(); return; }
         Frame = _frameCache.Get(View, ColumnLayout, Selection, HeightIndex, _metrics, _surface.ActualWidth, _surface.ActualHeight, _offsetX, _offsetY);
         _offsetX = Frame.Columns.Offset; _offsetY = Frame.OffsetY;
-        _updatingScroll = true;
-        try
-        {
-            _vertical.Maximum = Math.Max(0, HeightIndex.TotalHeight - Frame.BodyHeight);
-            _vertical.ViewportSize = Frame.BodyHeight; _vertical.SmallChange = RowHeight; _vertical.LargeChange = Frame.BodyHeight; _vertical.Value = _offsetY;
-            _horizontal.Maximum = Frame.Columns.MaximumOffset; _horizontal.ViewportSize = Math.Max(0, Frame.Columns.MiddleRight - Frame.Columns.MiddleLeft);
-            _horizontal.SmallChange = 32; _horizontal.LargeChange = _horizontal.ViewportSize; _horizontal.Value = _offsetX;
-        }
-        finally { _updatingScroll = false; }
+        UpdateScrollBars();
         PositionEditor(); Redraw();
     }
     public void Redraw()
@@ -238,7 +229,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public void ScrollTo(double x, double y)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y)) throw new ArgumentOutOfRangeException(nameof(x));
-        if (!CommitEdit()) return;
+        if (!CommitEdit()) { RestoreScrollBarValues(); return; }
         _offsetX = Math.Max(0, x); _offsetY = Math.Max(0, y); UpdateGeometry(); Changed();
     }
     public void EnsureVisible(CellAddress cell)
