@@ -20,7 +20,7 @@ public sealed partial class GridControl
     private bool _filterEditor;
     private bool _committing;
     private object? _initialEditorValue;
-    public bool IsEditing => _editor is not null;
+    public bool IsEditing => _editor is not null || _nativeEditCell is not null || HasPendingCellEdits;
     public bool IsEditorReady => _editor is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } && _editor.FocusState != FocusState.Unfocused;
     public string? EditorText => _editor is TextBox text ? text.Text : _editor is ComboBox combo ? Convert.ToString(combo.SelectedItem) : null;
     public string? EditingField => _editField;
@@ -29,6 +29,7 @@ public sealed partial class GridControl
     public void BeginEdit(long recordId, string field)
     {
         RequireView();
+        if (BeginNativeCellEdit(recordId, Table!.Schema[field].Field)) return;
         if (_editor is not null && !_filterEditor && _editRecordId == recordId &&
             string.Equals(_editField, field, StringComparison.OrdinalIgnoreCase))
         { _editor.Focus(FocusState.Programmatic); return; }
@@ -96,15 +97,17 @@ public sealed partial class GridControl
     }
     public bool CommitEdit()
     {
-        if (_committing || _editor is null) return true;
+        if (_committing || _committingNativeCells) return true;
+        if (!CommitOtherCellControls()) return false;
+        if (_editor is null) return true;
         _committing = true;
         try
         {
             object? value = EditorValue();
             if (Equals(value, _initialEditorValue))
             {
-                // An untouched editor is not a request to clear a checked filter, normalize or
-                // replace the stored value. Preserve nulls, precision and versions.
+                // Untouched editors preserve nulls, precision and checked-value filters.
+                // Merely opening the auto-filter row must not replace its value selection.
                 _transaction?.Cancel(); CloseEditor(); ClearError(); return true;
             }
             if (!_filterEditor && IsReadOnly) throw new InvalidOperationException("This grid is read-only.");
@@ -120,7 +123,7 @@ public sealed partial class GridControl
         }
         finally { _committing = false; }
     }
-    public void CancelEdit() { _transaction?.Cancel(); CloseEditor(); ClearError(); }
+    public void CancelEdit() { _transaction?.Cancel(); CloseEditor(); CancelCellEdits(); ClearError(); }
     private void CloseEditor()
     {
         if (_editor is not null) { _editor.KeyDown -= EditorKeyDown; _editor.Loaded -= EditorLoaded; }
@@ -153,8 +156,18 @@ public sealed partial class GridControl
     {
         try
         {
+            var table = Table; var view = View; var history = History; var focus = Selection.FocusedCell;
+            if (table is null || view is null || history is null || focus is null || IsReadOnly || !CommitEdit()) return;
+            long revision = table.Revision;
+            var columns = SelectionFields.ToArray();
             var content = Clipboard.GetContent();
-            if (content.Contains(StandardDataFormats.Text)) PasteText(await content.GetTextAsync());
+            if (!content.Contains(StandardDataFormats.Text)) return;
+            string text = await content.GetTextAsync();
+            // Clipboard reads are asynchronous: never paste into a replacement table,
+            // a newly focused cell or a changed layout selected while the read was pending.
+            if (_disposed || !ReferenceEquals(Table, table) || !ReferenceEquals(View, view) || IsReadOnly ||
+                Selection.FocusedCell != focus || table.Revision != revision || !SelectionFields.SequenceEqual(columns)) return;
+            PasteText(text);
         }
         catch (Exception exception) { Report(exception); }
     }

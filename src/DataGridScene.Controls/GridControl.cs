@@ -51,7 +51,12 @@ public sealed partial class GridControl : UserControl, IDisposable
     public long FrameBuildCount => _frameCache.BuildCount;
     public long FrameReuseCount => _frameCache.ReuseCount;
     public GridMetrics Metrics => _metrics;
-    public bool IsReadOnly { get; set; }
+    private bool _isReadOnly;
+    public bool IsReadOnly
+    {
+        get => _isReadOnly;
+        set { if (_isReadOnly == value) return; _isReadOnly = value; Redraw(); Changed(); }
+    }
     public string? LastError { get; private set; }
     public double HorizontalOffset => _offsetX;
     public double VerticalOffset => _offsetY;
@@ -88,7 +93,7 @@ public sealed partial class GridControl : UserControl, IDisposable
         _root.Children.Add(_surface); _root.Children.Add(_overlay);
         Grid.SetColumn(_vertical, 1); _root.Children.Add(_vertical);
         Grid.SetRow(_horizontal, 1); _root.Children.Add(_horizontal);
-        InitializeFilterPanel();
+        InitializeFilterPanel(); InitializeCellControls();
         Content = _root;
         _surface.SizeChanged += (_, _) => UpdateGeometry();
         _vertical.ValueChanged += (_, args) => { if (!_updatingScroll) ScrollTo(_offsetX, args.NewValue); };
@@ -111,7 +116,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(GridControl));
         CancelEdit();
-        CloseValueFilter();
+        CloseValueFilter(); ResetCellControls();
         ResetPointerState();
         if (View is not null) { View.Changed -= ViewChanged; View.Dispose(); }
         if (ColumnLayout is not null) ColumnLayout.Changed -= LayoutChanged;
@@ -223,7 +228,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     {
         if (_disposed) return;
         if (_dataUpdateDepth > 0) { _redrawPending = true; return; }
-        _surface.Invalidate();
+        SynchronizeCellControls(); _surface.Invalidate();
     }
     private void Changed()
     {
@@ -383,6 +388,7 @@ public sealed partial class GridControl : UserControl, IDisposable
             if (document.Selection is not null) new GridSelection().RestoreState(nextView, document.Selection);
         }
         catch { nextView.Dispose(); throw; }
+        ResetCellControls();
         var previousView = View!;
         previousView.Changed -= ViewChanged;
         ColumnLayout!.Changed -= LayoutChanged;
@@ -416,7 +422,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public new void Dispose()
     {
         if (_disposed) return;
-        CancelEdit(); CloseValueFilter(); _disposed = true;
+        CancelEdit(); CloseValueFilter(); _disposed = true; ResetCellControls();
         if (View is not null) { View.Changed -= ViewChanged; View.Dispose(); }
         if (ColumnLayout is not null) ColumnLayout.Changed -= LayoutChanged;
         if (History is not null) History.Changed -= HistoryChanged;

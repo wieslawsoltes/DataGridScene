@@ -73,7 +73,7 @@ try {
     assert.deepEqual(filtered.chrome.visibleExamples, ['Column bands', 'Nested bands']);
     await click('scenario-Nested bands'); await waitFor(s => s.frame.bandLevels === 2);
     await click('example-search'); await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
-    await waitFor(s => s.chrome.visibleExamples.length === 12);
+    await waitFor(s => s.chrome.visibleExamples.length === 13);
   });
   await test('chrome.theme-gallery-applies-to-whole-shell', async () => {
     await reset(); await click('tab-themes'); await waitFor(s => s.chrome.themesVisible);

@@ -2,7 +2,7 @@
 
 ## Reproducible layers
 
-The executable `tests/DataGridScene.Tests` runs `FilterPresentationValidationSuite`, which includes the baseline and selection suites. Its 331 contracts cover schema, data shaping, editing, clipboard/export, paging, variable-height indexing, bands and workspace state. It writes `artifacts/core-validation.json` and exits nonzero on any failed assertion.
+The executable `tests/DataGridScene.Tests` runs `NativeCellValidationSuite`, which includes the baseline and selection suites. Its 347 contracts cover schema, data shaping, editing, clipboard/export, paging, variable-height indexing, bands and workspace state. It writes `artifacts/core-validation.json` and exits nonzero on any failed assertion.
 
 The actual Uno WebAssembly application exposes the same suite through a sample-only diagnostic bridge. `tests/browser/run.mjs` invokes it in the browser runtime and also performs 32 interaction checks. `tests/browser/summaries.mjs` performs 20 summary, context-menu and staged-editor interaction checks. `tests/browser/workspace.mjs` performs 16 additional band/workspace checks. Real browser pointer, keyboard, clipboard and native text input are used; diagnostic commands supply fixtures/configuration and snapshots, not synthetic success results.
 
@@ -10,13 +10,15 @@ Clipboard tests first write an unrelated sentinel, issue Ctrl+C, and poll until 
 
 `tests/browser/performance.mjs` adds 11 live-update and bounded-work checks, including real cell edits, start/stop controls, wheel scrolling and a batch of 1,000 edits.
 
-`tests/browser/review.mjs` adds eight checks for cached frames, edit preservation, read-only transitions and real control APIs. Its control-API check invokes ten individual Uno contracts; these instantiate the controls on the UI thread rather than simulating their behavior. The shared 331-contract suite also includes raster stack restoration and 22 bounded page-scheduling checks.
+`tests/browser/review.mjs` adds eight checks for cached frames, edit preservation, read-only transitions and real control APIs. Its control-API check invokes ten individual Uno contracts; these instantiate the controls on the UI thread rather than simulating their behavior. The shared 347-contract suite also includes raster stack restoration and 22 bounded page-scheduling checks.
 
 `tests/browser/value-filters.mjs` adds thirteen checked-filter scenarios, including native ListView virtualization on a 100,000-record field, search across the value limit, checked selection, exclusion, condition entry and persistence.
 
-`tests/browser/chrome.mjs` adds 18 command-ribbon/filter-panel checks and runs 12 additional real Uno API contracts. The total browser inventory is 118 checks; the two embedded control suites contain 22 individual API contracts. It captures light/dark, full-width and filter-panel screenshots.
+`tests/browser/chrome.mjs` adds 18 command-ribbon/filter-panel checks and runs 12 additional real Uno API contracts. The chrome and previous browser suites contain 118 checks; their two embedded control suites contain 22 individual API contracts. It captures light/dark, full-width and filter-panel screenshots.
 
-`npm run test:browser` runs all seven harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
+`tests/browser/native-cells.mjs` adds 22 native-cell checks and runs 11 additional real Uno API contracts. The total inventory is 140 browser checks and 33 embedded control API contracts. Native tests cover actual editors, validation, undo, actions, popup input, recycled identities, 100,000 records and bounded rebinding.
+
+`npm run test:browser` runs all eight harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
 
 ## CI artifacts
 

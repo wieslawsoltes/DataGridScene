@@ -15,7 +15,7 @@ public sealed partial class MainPage
     private ContentDialog? _filterDialog;
     private readonly List<VectorIcon> _navigationIcons = [];
     private readonly TextBox _exampleSearch = new() { PlaceholderText = "Search examples", MinHeight = 28, Height = 28, FontSize = 12, Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(2, 0, 2, 12), CornerRadius = new CornerRadius(1) };
-    private static readonly string[] ScenarioOrder = ["Overview", "Grouping", "Filtering", "Editing", "Cell selection", "Conditional formatting", "Master-detail", "Column bands", "Nested bands", "Group summaries", "Live updates", "Performance"];
+    private static readonly string[] ScenarioOrder = ["Overview", "Grouping", "Filtering", "Editing", "Cell selection", "Conditional formatting", "Master-detail", "Column bands", "Nested bands", "Group summaries", "Live updates", "Native controls", "Performance"];
     private void BuildCommandChrome()
     {
         var area = new Grid { Padding = new Thickness(5, 0, 5, 4), Background = Brush("#f5f5f5") };
@@ -86,7 +86,8 @@ public sealed partial class MainPage
     }
     private void ActivateScenario(string scenario)
     {
-        if (scenario == "Group summaries") ApplySummaryScenario();
+        if (scenario == "Native controls") ApplyNativeCellScenario();
+        else if (scenario == "Group summaries") ApplySummaryScenario();
         else if (scenario == "Live updates") ApplyLiveScenario();
         else ApplyScenario(scenario);
     }

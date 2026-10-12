@@ -4,6 +4,7 @@ namespace DataGridScene.Core;
 public sealed class EditHistory
 {
     private readonly GridTable _table;
+    internal GridTable Table => _table;
     private readonly Stack<ChangeSet> _undo = [];
     private readonly Stack<ChangeSet> _redo = [];
     private long _knownRevision;

@@ -16,6 +16,7 @@ public sealed partial class GridCanvasRenderer : IDisposable
     public GridPalette Palette { get; set; } = GridPalette.Light;
     public IList<ConditionalFormatRule> ConditionalFormats { get; } = new List<ConditionalFormatRule>();
     public Func<GridRecord, GridDetailData>? DetailProvider { get; set; }
+    public Func<CellAddress, bool>? IsNativeCell { get; set; }
     public IReadOnlyDictionary<string, string> FilterTexts { get; set; } = new Dictionary<string, string>();
     public double? DragMarkerX { get; set; }
     public int CellsDrawn { get; private set; }
@@ -188,7 +189,9 @@ public sealed partial class GridCanvasRenderer : IDisposable
             Fill(canvas, 0, bounds.Y, frame.Width, bounds.Height, background);
             foreach (var slot in frame.Columns.Slots)
             {
-                var column = frame.View.Table.Schema.Columns[slot.SchemaIndex]; object? value = column.GetValue(record);
+                var column = frame.View.Table.Schema.Columns[slot.SchemaIndex];
+                bool hosted = IsNativeCell?.Invoke(new(record.Id, column.Field)) == true;
+                object? value = hosted ? null : column.GetValue(record);
                 var rectangle = new SKRect((float)slot.X, (float)bounds.Y, (float)(slot.X + slot.Width), (float)bounds.Bottom);
                 canvas.Save(); canvas.ClipRect(new SKRect((float)slot.ClipLeft, (float)bounds.Y, (float)slot.ClipRight, (float)bounds.Bottom));
                 GridCellStyle? style = null;
@@ -196,7 +199,7 @@ public sealed partial class GridCanvasRenderer : IDisposable
                 bool cellSelected = frame.Selection.ContainsCell(record.Id, column.Field);
                 if (frame.Selection.Mode == GridSelectionMode.Cells && cellSelected) Fill(canvas, slot.X, bounds.Y, slot.Width, bounds.Height, Palette.Selection);
                 if (style?.Background is SKColor fill && !cellSelected) Fill(canvas, slot.X, bounds.Y, slot.Width, bounds.Height, fill);
-                DrawCell(canvas, column, value, rectangle, frame.View.Table.Schema.Culture, style);
+                if (!hosted) DrawCell(canvas, column, value, rectangle, frame.View.Table.Schema.Culture, style);
                 if (frame.Selection.FocusedCell is { } focus && focus.RecordId == record.Id && focus.Field.Equals(column.Field, StringComparison.OrdinalIgnoreCase))
                 {
                     _stroke.Color = Palette.Accent; _stroke.StrokeWidth = 1.5f; canvas.DrawRect(new SKRect(rectangle.Left + 0.75f, rectangle.Top + 0.75f, rectangle.Right - 0.75f, rectangle.Bottom - 0.75f), _stroke);

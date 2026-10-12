@@ -64,7 +64,7 @@ public sealed partial class MainPage : Page
         var statusBar = new Border { Background = Brush("#f3f3f3"), BorderThickness = new Thickness(0, 1, 0, 0), BorderBrush = Brush("#dedede"), Padding = new Thickness(14, 0, 14, 0), Child = _status };
         Grid.SetRow(statusBar, 3); Grid.SetColumnSpan(statusBar, 3); _shell.Children.Add(statusBar); Content = _shell;
         DataGrid.DetailProvider = OrderData.Details;
-        InitializeSummaryUI(); InitializePerformanceUI(); DecorateNavigation();
+        InitializeSummaryUI(); InitializePerformanceUI(); InitializeNativeCellUI(); DecorateNavigation();
         DataGrid.FilterEditorRequested += (_, _) => ShowFilters();
         DataGrid.StateChanged += (_, _) => RefreshStatus();
         DataGrid.Error += (_, message) => { Message = message; RefreshStatus(); };
@@ -193,7 +193,7 @@ public sealed partial class MainPage : Page
         try
         {
             DataGrid.SelectionMode = GridSelectionMode.MultipleRows;
-            DataGrid.Table = OrderData.Create(count); DataGrid.ColumnLayout!.SetPin("OrderID", ColumnPin.Left);
+            if (DataGrid.Table is not null) DataGrid.ClearCellTemplates(); DataGrid.Table = OrderData.Create(count); DataGrid.ColumnLayout!.SetPin("OrderID", ColumnPin.Left);
             DataGrid.ColumnLayout.SetPin("Status", ColumnPin.Right); DataGrid.ColumnLayout.SetVisible("Notes", false);
             DataGrid.Renderer.ConditionalFormats.Clear();
             DataGrid.Renderer.ConditionalFormats.Add(new((record, column) => column.Field == "Total" && (decimal)column.GetValue(record)! > 20000m, new(SKColor.Parse("#fff1eb"), SKColor.Parse("#ac4a20"))));
@@ -206,6 +206,7 @@ public sealed partial class MainPage : Page
         StopLiveUpdates();
         if (!DataGrid.CommitEdit()) return;
         _searchTimer.Stop();
+        DataGrid.ClearCellTemplates();
         Scenario = name; Message = null;
         _loading = true; _search.Text = ""; _loading = false;
         if (name == "Performance") { Reload(100000); Scenario = name; }
@@ -293,7 +294,7 @@ public sealed partial class MainPage : Page
     }
     private async void RunValidation()
     {
-        try { var report = await DataGridScene.Validation.FilterPresentationValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
+        try { var report = await DataGridScene.Validation.NativeCellValidationSuite.RunAsync(); SetMessage($"Conformance: {report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:N0} ms."); }
         catch (Exception error) { SetMessage(error.Message); }
     }
     public void Export(string format)
