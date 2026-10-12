@@ -10,6 +10,7 @@ public sealed partial class GridControl
     public long CellControlTreeDetachCount { get; private set; }
     public long CellControlSizeWriteCount { get; private set; }
     public long CellControlTranslationWriteCount { get; private set; }
+    public long CellControlTabIndexWriteCount { get; private set; }
     public int AttachedCellControlCount => _nativeCells.Children.Count;
 
     // Retain pooled controls in the same visual parent. Collapsed inactive hosts cannot
@@ -42,6 +43,11 @@ public sealed partial class GridControl
     private void PlaceCellHost(NativeHost host, NativeCellPlacement placement)
     {
         var bounds = placement.Bounds; var clip = placement.ClipBounds;
+        // Keep each cell a local focus scope. Rank the host, not application-owned
+        // descendants: composite controls retain their own TabIndex and Tab handling.
+        // No child removal/insertion is needed to repair focus order after recycling.
+        if (host.Container.TabIndex != placement.TabIndex)
+        { host.Container.TabIndex = placement.TabIndex; CellControlTabIndexWriteCount++; }
         // Translation is a render change, not a Canvas.Left/Top arrange change.
         // Dimensions remain full-cell dimensions even where a frozen pane clips them.
         if (host.Position.X != bounds.X) { host.Position.X = bounds.X; CellControlTranslationWriteCount++; }
