@@ -14,6 +14,7 @@ public sealed class GridCellEditBuffer : INotifyPropertyChanged, IDisposable
     private object? _original, _value;
     private bool _committing;
     private int _bindingDepth;
+    private bool _wasEditable;
     public System.Globalization.CultureInfo Culture => _table.Schema.Culture;
     public GridRecord Record { get; }
     public GridColumn Column { get; }
@@ -41,7 +42,7 @@ public sealed class GridCellEditBuffer : INotifyPropertyChanged, IDisposable
         ArgumentNullException.ThrowIfNull(table); ArgumentNullException.ThrowIfNull(history);
         if (!ReferenceEquals(table, history.Table)) throw new ArgumentException("Edit history must belong to the binding table.", nameof(history));
         _table = table; _history = history; Record = table[recordId]; Column = table.Schema[field];
-        _canEdit = canEdit ?? (() => true); ReadCurrent();
+        _canEdit = canEdit ?? (() => true); ReadCurrent(); _wasEditable = CanEdit;
     }
     private void ReadCurrent() { _version = Record.Version; _original = _value = Column.GetValue(Record); }
     private void RequireIdentity()
@@ -55,23 +56,28 @@ public sealed class GridCellEditBuffer : INotifyPropertyChanged, IDisposable
     public void Refresh()
     {
         if (!IsActive || _committing) return;
-        if (!IsDirty && _table.Contains(RecordId) && ReferenceEquals(_table[RecordId], Record)) ReadCurrent();
-        Notify();
+        bool changed = _wasEditable != CanEdit;
+        _wasEditable = CanEdit;
+        if (!IsDirty && _table.Contains(RecordId) && ReferenceEquals(_table[RecordId], Record) && _version != Record.Version)
+        { ReadCurrent(); changed = true; }
+        if (changed) Notify();
     }
     public bool TryCommit()
     {
         if (_committing || _bindingDepth > 0) return true;
+        bool notify = false;
         try
         {
             RequireIdentity();
-            if (!IsDirty) { Error = null; return true; }
+            if (!IsDirty) { notify = Error is not null; Error = null; return true; }
+            notify = true;
             if (!CanEdit) throw new InvalidOperationException("This cell is read-only.");
             _committing = true;
             _history.Execute([new(RecordId, Field, _value)], new Dictionary<long,int> { [RecordId] = _version });
             ReadCurrent(); Error = null; return true;
         }
-        catch (Exception error) { Error = error.Message; return false; }
-        finally { _committing = false; Notify(); }
+        catch (Exception error) { notify = true; Error = error.Message; return false; }
+        finally { _committing = false; if (notify) Notify(); }
     }
     public void Cancel()
     {
