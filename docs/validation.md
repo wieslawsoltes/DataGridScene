@@ -20,9 +20,17 @@ Clipboard tests first write an unrelated sentinel, issue Ctrl+C, and poll until 
 
 `tests/browser/template-selectors.mjs` adds 14 row-aware-template, native appearance and bounded-work checks, for a total of 154 browser checks before the navigation suite. It verifies per-record choices, null fallbacks, dirty-editor retention, callback failure, 100,000-row cache bounds and no rebinding during repeated no-op commands.
 
-`tests/browser/navigation-viewport.mjs` adds four regressions at 960- and 720-pixel window heights. It scrolls the real native sidebar with wheel input before clicking offscreen commands, then validates live updates and native editing/undo. The full inventory is 158 browser checks.
+`tests/browser/navigation-viewport.mjs` adds four regressions at 960- and 720-pixel window heights. It scrolls the real native sidebar with wheel input before clicking offscreen commands, then validates live updates and native editing/undo. This brings the pre-scrollbar inventory to 158 browser checks.
 
-`npm run test:browser` runs all ten harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
+`tests/browser/scrollbars.mjs` adds 25 checks for persistent native rails across all 13 examples, actual thumb contrast and template parts, dragging, arrow/page/keyboard input, invalid-edit rejection, and HiDPI touch. The suite checks painted pixels, not only scrollbar properties.
+
+`tests/browser/native-modes.mjs` adds 29 checks covering native equivalents of every example, preserved data and layout when switching modes, pointer/keyboard editing, validation, drag selection, retained-tree scrolling, 100,000-record operation counts and pool cleanup. Its embedded contract invocation runs nine additional real Uno API checks.
+
+`tests/browser/native-input-regressions.mjs` adds four checks for recycled double-click editing, persistent validation after unrelated focus changes, native display context menus and unhandled exceptions.
+
+The complete inventory is **216 browser checks across 13 harnesses**, plus **42 individual Uno API contracts** embedded in four of those harnesses. These counts describe the tests, not a claim that an unfinished run passed.
+
+`npm run test:browser` runs all thirteen harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
 
 ## CI artifacts
 
@@ -39,7 +47,7 @@ The desktop CI job builds the shared Uno desktop target. It does not currently r
 
 ## Pages
 
-After successful main validation, Publish Pages downloads that run's browser artifact rather than rebuilding different sources. Its deployment verification compares the public `build.json` commit, starts the actual WASM app in Chromium, performs a native edit and undo, opens the nested-band and group-summary scenarios, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input. The complete 14-scenario selector browser suite then runs against the public URL. Navigation commands are clicked only after their centers lie within the actual sidebar viewport; failures retain the final application snapshot and screenshot. Verification reports and screenshots are retained as `deployed-site-verification`.
+After successful main validation, Publish Pages downloads that run's browser artifact rather than rebuilding different sources. Its deployment verification compares the public `build.json` commit, starts the actual WASM app in Chromium, performs a native edit and undo, opens the nested-band and group-summary scenarios, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input. The complete 14-scenario selector suite and 29-scenario native-mode suite then run against the public URL, followed by the native-input and 25-scenario painted-scrollbar suites. Navigation commands are clicked only after their centers lie within the actual sidebar viewport; failures retain the final application snapshot and screenshot. Verification reports and screenshots are retained as `deployed-site-verification`.
 
 A failed deployment verification does not undo publication; it marks the deployment workflow unsuccessful and must be investigated before claiming the public site is verified.
 

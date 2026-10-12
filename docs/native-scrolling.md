@@ -81,3 +81,17 @@ tracked separately in the compatibility matrix.
 Design references: [DevExpress optimized display/edit mode](https://docs.devexpress.com/WPF/17112/controls-and-libraries/data-grid/performance-improvement/optimized-mode)
 and [Uno visual-tree performance guidance](https://platform.uno/docs/articles/Uno-UI-Performance.html).
 No vendor source, branding or proprietary assets are used.
+
+## Input review
+
+Display-cell drag selection uses the same grid selection logic as canvas cells, while
+pointer capture stays with the originating native host. Transferring capture to a
+sibling canvas splits the native gesture recognizer's press/release sequence and can
+prevent double-click editing. Recycled gestures are checked against the actual record
+and column identity, not just the reused visual. Right-clicks on lightweight displays
+open the same grid commands. Interactive child controls retain their own native input.
+
+Successful no-op commits from unrelated controls must not clear another cell's active
+validation error. The failed cell keeps its pending text, message and outline until
+correction or cancellation. Error-free scrolling does not scan other controls for
+validation errors.

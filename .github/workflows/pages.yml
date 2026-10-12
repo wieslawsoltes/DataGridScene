@@ -16,7 +16,7 @@ jobs:
   deploy:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -61,6 +61,12 @@ jobs:
           GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
           BROWSER_RESULTS: artifacts/deployed-verification
         run: node tests/browser/native-modes.mjs
+      - name: Verify native gestures and painted scrollbars on public Pages
+        env:
+          APP_URL: ${{ steps.deployment.outputs.page_url }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          BROWSER_RESULTS: artifacts/deployed-verification
+        run: node tests/browser/native-input-regressions.mjs && node tests/browser/scrollbars.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
