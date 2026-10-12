@@ -61,6 +61,12 @@ jobs:
           GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
           BROWSER_RESULTS: artifacts/deployed-verification
         run: node tests/browser/native-modes.mjs
+      - name: Verify native editor popups and recycling on public Pages
+        env:
+          APP_URL: ${{ steps.deployment.outputs.page_url }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          BROWSER_RESULTS: artifacts/deployed-verification
+        run: node tests/browser/native-cells.mjs
       - name: Verify native gestures and painted scrollbars on public Pages
         env:
           APP_URL: ${{ steps.deployment.outputs.page_url }}

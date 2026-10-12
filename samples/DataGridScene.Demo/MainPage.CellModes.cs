@@ -29,6 +29,7 @@ public sealed partial class MainPage
     public object NativeScrollingSnapshot() => new
     {
         mode = DataGrid.CellRenderingMode.ToString(),
+        combo = NativeComboSnapshot(),
         focusedType = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot)?.GetType().Name,
         focusedControl = XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is FrameworkElement element
             ? AutomationProperties.GetAutomationId(element) : null,

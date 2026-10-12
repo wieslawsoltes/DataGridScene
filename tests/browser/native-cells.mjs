@@ -24,7 +24,45 @@ try{
  await test('native.textbox-edit-commit-and-keyboard-undo',async()=>{await scenario();const {s,x,y}=await target('Company');const before=s.records[0].values.Company;await page.mouse.click(x,y);await page.waitForFunction(()=>document.activeElement?.id==='uno-input');await page.keyboard.press('Control+A');await page.keyboard.insertText('Native control Δ');await waitFor(s=>s.nativeStats.hasPendingCellEdits);await page.keyboard.press('Enter');await waitFor(s=>s.records[0].values.Company==='Native control Δ'&&s.canUndo);await page.keyboard.press('Control+Z');await waitFor(s=>s.records[0].values.Company===before);});
  await test('native.validation-keeps-input-and-blocks-scroll',async()=>{await scenario();const {x,y}=await target('Company');await page.mouse.click(x,y);await page.keyboard.press('Control+A');await page.keyboard.press('Backspace');await page.keyboard.press('Enter');const rejected=await waitFor(s=>s.nativeCells.some(c=>c.address.field==='Company'&&c.error));assert.equal(rejected.records[0].values.Company,'Alpine Ski House');await command('scroll',{x:0,y:1500});assert.equal((await snapshot()).verticalOffset,0);await page.keyboard.press('Escape');await waitFor(s=>!s.nativeStats.hasPendingCellEdits);});
  await test('native.checkbox-activation-and-undo',async()=>{await scenario();const {s,x,y}=await target('Verified');const old=s.records[0].values.Verified;await page.mouse.click(x,y);await waitFor(s=>s.records[0].values.Verified!==old&&s.canUndo);await command('focus-grid');await page.keyboard.press('Control+Z');await waitFor(s=>s.records[0].values.Verified===old);});
- await test('native.combobox-keyboard-choice-and-undo',async()=>{await scenario();const {s,x,y}=await target('Status');const old=s.records[0].values.Status;await page.mouse.click(x,y);await page.keyboard.press('Home');await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');await waitFor(s=>s.records[0].values.Status!==old);await command('focus-grid');await page.keyboard.press('Control+Z');await waitFor(s=>s.records[0].values.Status===old);});
+ await test('native.combobox-keyboard-choice-and-undo',async()=>{
+   await scenario();const {s,x,y}=await target('Status');const old=s.records[0].values.Status;
+   await page.mouse.click(x,y);
+   // Browser event delivery completes before Uno's queued focus/popup layout.
+   // Wait for the actual control, not two animation frames or a fixed delay.
+   await waitFor(s=>s.nativeScrolling.combo?.isOpen && s.nativeScrolling.combo.items.length>0 &&
+     (s.nativeScrolling.combo.focusWithin || s.nativeScrolling.combo.focusedIndex>=0));
+   await page.keyboard.press('Home');await waitFor(s=>s.nativeScrolling.combo?.focusedIndex===0);
+   await page.keyboard.press('ArrowDown');await waitFor(s=>s.nativeScrolling.combo?.focusedIndex===1);
+   await page.keyboard.press('Enter');
+   await waitFor(s=>s.records[0].values.Status==='Processing'&&s.canUndo&&!s.nativeScrolling.combo?.isOpen);
+   await command('focus-grid');await waitFor(s=>s.nativeScrolling.focusedType==='GridControl');
+   await page.keyboard.press('Control+Z');await waitFor(s=>s.records[0].values.Status===old);
+ });
+ await test('native.recycled-combobox-escape-preserves-model',async()=>{
+   await scenario();await command('scroll',{x:0,y:1800});
+   const current=await snapshot(),id=current.nativeCells.find(c=>c.address.field==='Status'&&c.clipBounds.height===36).address.recordId;
+   const {s,x,y}=await target('Status',id);const old=s.focusedRecord.values.Status;
+   assert.ok(s.nativeStats.reusedCellControlCount>0);
+   await page.mouse.click(x,y);await waitFor(s=>s.nativeScrolling.combo?.isOpen&&s.nativeScrolling.combo.items.length>0&&
+     (s.nativeScrolling.combo.focusWithin||s.nativeScrolling.combo.focusedIndex>=0));
+   await page.keyboard.press('Home');await waitFor(s=>s.nativeScrolling.combo?.focusedIndex===0);
+   await page.keyboard.press('Escape');await waitFor(s=>!s.nativeScrolling.combo?.isOpen);
+   const after=await snapshot();assert.equal(after.focusedRecord.id,id);assert.equal(after.focusedRecord.values.Status,old);
+   assert.equal(after.canUndo,false);assert.equal(after.nativeStats.hasPendingCellEdits,false);
+ });
+ await test('native.recycled-combobox-pointer-choice-and-undo',async()=>{
+   await scenario();await command('scroll',{x:0,y:3600});
+   const current=await snapshot(),id=current.nativeCells.find(c=>c.address.field==='Status'&&c.clipBounds.height===36).address.recordId;
+   const {s,x,y}=await target('Status',id);const old=s.focusedRecord.values.Status;
+   await page.mouse.click(x,y);const opened=await waitFor(s=>s.nativeScrolling.combo?.isOpen&&s.nativeScrolling.combo.items.length>=5);
+   const chosen=opened.nativeScrolling.combo.items.find(item=>item.text!==old);assert.ok(chosen);
+   const r=chosen.bounds;assert.ok(r.x>=0&&r.right<=1440&&r.y>=0&&r.bottom<=1000);
+   await page.mouse.click(r.x+r.width/2,r.y+r.height/2);
+   await waitFor(s=>s.focusedRecord.id===id&&s.focusedRecord.values.Status===chosen.text&&s.canUndo&&!s.nativeScrolling.combo?.isOpen);
+   await command('focus-grid');await waitFor(s=>s.nativeScrolling.focusedType==='GridControl');await page.keyboard.press('Control+Z');
+   await waitFor(s=>s.focusedRecord.values.Status===old);
+   assert.equal((await snapshot()).records[0].values.Status,'Shipped');
+ });
  await test('native.numberbox-pending-text-commits',async()=>{await scenario();const {x,y}=await target('Quantity');await page.mouse.click(x-15,y);await page.waitForFunction(()=>document.activeElement?.id==='uno-input');await page.keyboard.press('Control+A');await page.keyboard.insertText('17');await page.keyboard.press('Enter');await waitFor(s=>s.records[0].values.Quantity===17&&s.canUndo);});
  await test('native.edit-only-slider-replaces-progress-display',async()=>{await scenario();await target('Progress');await page.keyboard.press('F2');let s=await waitFor(s=>s.nativeCells.some(c=>c.address.recordId===10001&&c.controlType==='Slider'));const c=s.nativeCells.find(c=>c.address.recordId===10001&&c.controlType==='Slider');await page.mouse.click(s.origin.x+c.clipBounds.x+c.clipBounds.width*.4,s.origin.y+c.clipBounds.y+c.clipBounds.height/2);await page.keyboard.press('Enter');s=await waitFor(s=>s.records[0].values.Progress<100&&!s.nativeCells.some(c=>c.controlType==='Slider'));assert.ok(s.nativeCells.some(c=>c.address.recordId===10001&&c.controlType==='ProgressBar'));});
  await test('native.calendar-popup-and-cancel',async()=>{await scenario();await command('focus',{id:10001,field:'OrderDate'});const before=(await snapshot()).records[0].values.OrderDate;await page.keyboard.press('F2');const s=await waitFor(s=>s.nativeCells.some(c=>c.controlType==='CalendarDatePicker'));const c=s.nativeCells.find(c=>c.controlType==='CalendarDatePicker');await page.mouse.click(s.origin.x+c.clipBounds.right-18,s.origin.y+c.clipBounds.y+c.clipBounds.height/2);await settle();await page.screenshot({path:path.join(output,'native-calendar.png')});await page.keyboard.press('Escape');await page.keyboard.press('Escape');await command('focus-grid');await page.keyboard.press('Escape');assert.equal((await snapshot()).records[0].values.OrderDate,before);});
