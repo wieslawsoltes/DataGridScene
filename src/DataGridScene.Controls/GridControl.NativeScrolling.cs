@@ -46,13 +46,15 @@ public sealed partial class GridControl
     }
     private void DetachCellHost(NativeHost host)
     {
-        if (!host.Attached) return;
-        _nativeCells.Children.Remove(host.Container); host.Attached = false; CellControlTreeDetachCount++;
-        // Restore the direct body so ReleaseCellHost can detach application-owned
-        // content. Pooled hosts never take this path and retain their entire tree.
+        if (host.Attached)
+        {
+            _nativeCells.Children.Remove(host.Container); host.Attached = false; CellControlTreeDetachCount++;
+        }
+        // Restore the direct body even if attachment failed, so ReleaseCellHost
+        // detaches application-owned content. Pooled hosts never take this path.
         if (host.Container.Child is NativeCellFocusScope scope)
         {
-            var body = scope.Content;
+            var body = (UIElement?)scope.Content;
             scope.Content = null;
             host.Container.Child = null;
             host.Container.Child = body;
