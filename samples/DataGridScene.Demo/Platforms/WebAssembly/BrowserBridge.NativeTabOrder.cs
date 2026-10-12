@@ -1,4 +1,5 @@
 using DataGridScene.Controls;
+using DataGridScene.Core;
 using DataGridScene.Rendering.Skia;
 using DataGridScene.Validation;
 using Microsoft.UI.Xaml;
