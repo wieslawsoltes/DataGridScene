@@ -20,7 +20,8 @@ async function settle() { await page.evaluate(() => new Promise(r => requestAnim
 async function waitFor(predicate) {
   const start = Date.now();
   while (Date.now() - start < 15000) { const s = await navigation(); if (predicate(s)) return s; await page.waitForTimeout(40); }
-  throw new Error('Native tab state timed out: ' + JSON.stringify(await navigation()));
+  const { cells, ...state } = await navigation();
+  throw new Error('Native tab state timed out: ' + JSON.stringify({ ...state, firstCells: cells.slice(0, 6) }));
 }
 async function command(name, data = {}) {
   const result = await page.evaluate(([n, d]) => dataGridScene.command(n, d), [name, data]);
@@ -48,10 +49,13 @@ async function focusCompany(id) {
   await waitFor(s => s.focusedCell?.recordId === id && s.focusedCell?.field === 'Company');
 }
 async function tabTo(address, reverse = false, focusedId = null) {
-  await page.keyboard.press(reverse ? 'Shift+Tab' : 'Tab');
-  const s = await waitFor(s => s.focusedCell?.recordId === address.recordId && s.focusedCell?.field === address.field &&
-    (!focusedId || s.focusedId === focusedId));
-  assert.equal(s.lastError, null); return s;
+  const key = reverse ? 'Shift+Tab' : 'Tab';
+  await page.keyboard.press(key);
+  try {
+    const s = await waitFor(s => s.focusedCell?.recordId === address.recordId && s.focusedCell?.field === address.field &&
+      (!focusedId || s.focusedId === focusedId));
+    assert.equal(s.lastError, null); return s;
+  } catch (error) { throw new Error(`${key} expected ${address.recordId}/${address.field}/${focusedId ?? ''}: ${error.message}`, { cause: error }); }
 }
 async function traverse() {
   const n = await navigation(); ranks(n);
@@ -66,6 +70,7 @@ async function test(name, run) {
   const start = Date.now();
   try { await run(); results.push({ name, passed: true, milliseconds: Date.now() - start }); console.log('PASS', name); }
   catch (error) { results.push({ name, passed: false, error: String(error.stack ?? error) }); console.error('FAIL', name, error);
+    await writeFile(path.join(out, name + '.json'), JSON.stringify(await navigation(), null, 2)).catch(() => {});
     await page.screenshot({ path: path.join(out, name + '.png') }).catch(() => {}); }
 }
 try {
@@ -75,6 +80,12 @@ try {
     const exports = await getDotnetRuntime(0).getAssemblyExports('DataGridScene.Demo');
     globalThis.nativeTabBridge = exports.DataGridScene.Demo.BrowserBridge;
   });
+  await test('native-tab.accessibility-entry-on-fresh-load', async () => {
+    assert.equal(await page.locator('#uno-enable-accessibility').count(), 1);
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(() => document.activeElement?.id === 'uno-enable-accessibility');
+    assert.equal(await page.locator('#uno-enable-accessibility').getAttribute('tabindex'), '0');
+  });
   await test('native-tab.shared-geometry-contracts-in-wasm', async () => {
     const report = await page.evaluate(() => JSON.parse(nativeTabBridge.ValidateNativeTabOrder()));
     await writeFile(path.join(out, 'geometry-contracts.json'), JSON.stringify(report, null, 2));
@@ -82,6 +93,40 @@ try {
     assert.equal(report.results.length, 8);
   });
   await test('native-tab.initial-forward-and-reverse', async () => { await reset(); await traverse(); });
+  await test('native-tab.text-to-control-keeps-browser-keyboard-host', async () => {
+    await reset(); await focusCompany(10001);
+    await tabTo({ recordId: 10001, field: 'Quantity' });
+    await page.waitForFunction(() => document.activeElement?.id === 'uno-input');
+    await tabTo({ recordId: 10001, field: 'Status' });
+    await page.waitForFunction(() => document.activeElement === document.getElementById('uno-canvas')?.parentElement);
+    assert.equal(await page.evaluate(() => document.activeElement.tabIndex), -1);
+    assert.equal(await page.locator('#uno-enable-accessibility').getAttribute('tabindex'), '0');
+    assert.equal(await page.locator('#uno-canvas').getAttribute('aria-hidden'), 'true');
+    await tabTo({ recordId: 10001, field: 'Verified' });
+  });
+  await test('native-tab.reverse-handoff-restores-real-text-input', async () => {
+    await reset(); await focusCompany(10001);
+    await tabTo({ recordId: 10001, field: 'Quantity' });
+    await tabTo({ recordId: 10001, field: 'Status' });
+    await tabTo({ recordId: 10001, field: 'Quantity' }, true);
+    await page.waitForFunction(() => document.activeElement?.id === 'uno-input');
+    await tabTo({ recordId: 10001, field: 'Company' }, true);
+    await page.waitForFunction(() => document.activeElement?.id === 'uno-input');
+  });
+  await test('native-tab.external-dom-focus-is-not-recaptured', async () => {
+    await reset(); await focusCompany(10001);
+    await tabTo({ recordId: 10001, field: 'Quantity' });
+    await tabTo({ recordId: 10001, field: 'Status' });
+    await page.evaluate(() => {
+      const button = document.createElement('button'); button.id = 'external-focus-fixture'; button.textContent = 'External focus';
+      Object.assign(button.style, { position: 'fixed', left: '0px', top: '0px', zIndex: '10000' });
+      document.body.appendChild(button);
+    });
+    try {
+      await page.locator('#external-focus-fixture').click(); await settle(); await command('redraw');
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'external-focus-fixture');
+    } finally { await page.evaluate(() => document.getElementById('external-focus-fixture')?.remove()); }
+  });
   await test('native-tab.recycled-hosts-do-not-reverse-focus-order', async () => {
     await reset();
     for (const y of [1800, 7200, 0]) { await command('scroll', { x: 0, y }); await traverse(); }

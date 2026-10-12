@@ -21,7 +21,7 @@ public sealed partial class GridControl
     // scope never becomes an extra tab stop and does not handle traversal keys.
     private sealed class NativeCellFocusScope : UserControl
     {
-        public NativeCellFocusScope()
+        public NativeCellFocusScope(GridControl owner)
         {
             IsTabStop = false;
             TabFocusNavigation = KeyboardNavigationMode.Local;
@@ -30,8 +30,12 @@ public sealed partial class GridControl
             Padding = new Thickness(0);
             BorderThickness = new Thickness(0);
             MinWidth = MinHeight = 0;
+            GotFocus += (_, _) => owner.RestoreNativeKeyboardHost();
         }
     }
+    // No implementation or interop in desktop builds. The browser head restores
+    // DOM keyboard ownership after Uno releases a TextBox's shared HTML input.
+    partial void RestoreNativeKeyboardHost();
 
     // Retain pooled controls in the same visual parent. Collapsed inactive hosts cannot
     // paint, hit-test or enter the focus traversal. Their buffers are still deactivated.
@@ -41,7 +45,7 @@ public sealed partial class GridControl
         if (host.Attached) return;
         var body = host.Container.Child;
         host.Container.Child = null;
-        host.Container.Child = new NativeCellFocusScope { Content = body };
+        host.Container.Child = new NativeCellFocusScope(this) { Content = body };
         _nativeCells.Children.Add(host.Container); host.Attached = true; CellControlTreeAttachCount++;
     }
     private void DetachCellHost(NativeHost host)
