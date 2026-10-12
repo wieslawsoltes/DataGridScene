@@ -73,6 +73,8 @@ Select **Native controls** to use real TextBox, NumberBox, ComboBox and CheckBox
 
 Rows can choose different normal controls through `SetCellTemplateSelector` and `SetCellEditTemplateSelector`. The **Adaptive cell editors** command demonstrates this, with cached viewport choices and selection/focus decoration that does not rebind input values. See [template selectors and appearance](docs/template-selectors.md).
 
+Native Tab/Shift+Tab order follows visible rows and columns even after control recycling, with frozen panes ordered by their actual position. Composite cells retain their own child TabIndex values and disabled controls are left to the native focus system. Host ranks update without reparenting or replacing controls. See [native Tab-order geometry, tests and boundaries](docs/native-tab-order.md).
+
 ## Native versions of every example
 
 Enable **Native cells** beside search to run every existing example with ordinary Uno cell content while preserving its data, layout, filtering, selection and history. Explicit Native controls and Adaptive cell editors templates remain available. Lightweight native display elements switch to native editors with F2 or a double-click; group/detail/header/summary chrome continues to use the shared Skia renderer.
@@ -81,9 +83,9 @@ Native scrolling retains collapsed pooled controls under the same visual parent,
 
 ## Validation and deployment
 
-The shared C# suite contains **351 contracts** and runs on .NET and inside the actual published WebAssembly application. The complete browser inventory is **218 checks across 13 harnesses**, including every example in native cell mode, actual painted scrollbar visibility, native input, selection, layouts, summaries, live updates, HiDPI and touch. Four browser harnesses also execute **42 individual real Uno control API contracts**. Tests retain JSON reports, screenshots and Playwright traces. Consult the exact commit's Actions result for pass/fail status; inventory counts alone are not proof of success.
+The shared C# validation contains **359 contracts** (351 baseline plus eight native Tab-order geometry checks), run on .NET and inside the actual published WebAssembly application. The complete browser inventory is **229 checks across 14 harnesses**, including every example in native cell mode, actual painted scrollbar visibility, native input and Tab order, selection, layouts, summaries, live updates, HiDPI and touch. Four browser harnesses also execute **42 individual real Uno control API contracts**. Tests retain JSON reports, screenshots and Playwright traces. Consult the exact commit's Actions result for pass/fail status; inventory counts alone are not proof of success.
 
-CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell, opens the nested-band and group-summary samples, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input.
+CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell, opens the nested-band and group-summary samples, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input. Native modes, selectors, controls, input, Tab order and painted-scrollbar suites additionally run on the public URL.
 
 The renderer draws into Uno's Skia canvas. Hardware acceleration depends on the host and graphics driver. Hosted browser tests use ANGLE/SwiftShader, so their timings are **software-backend correctness evidence, not hardware GPU benchmarks**. The sample displays CPU paint time, not end-to-end frame or input latency.
 

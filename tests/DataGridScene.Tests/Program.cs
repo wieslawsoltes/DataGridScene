@@ -10,7 +10,9 @@ if (args.Contains("--benchmark"))
     Console.WriteLine(json); await File.WriteAllTextAsync("artifacts/performance-benchmarks.json", json); return 0;
 }
 
-var report = await NativeCellValidationSuite.RunAsync();
+var baseline = await NativeCellValidationSuite.RunAsync();
+var nativeTab = NativeTabOrderValidation.Run();
+var report = new ValidationReport(baseline.Results.Concat(nativeTab).ToArray(), baseline.Milliseconds + nativeTab.Sum(result => result.Milliseconds));
 foreach (var result in report.Results) Console.WriteLine($"{(result.Passed ? "PASS" : "FAIL")} {result.Name} ({result.Milliseconds:F2} ms){(result.Error is null ? "" : "\n" + result.Error)}");
 Console.WriteLine($"{report.PassedCount}/{report.Results.Count} passed in {report.Milliseconds:F2} ms");
 Directory.CreateDirectory("artifacts");
