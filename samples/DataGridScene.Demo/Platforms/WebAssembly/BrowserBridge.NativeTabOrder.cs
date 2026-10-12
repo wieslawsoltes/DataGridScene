@@ -32,8 +32,8 @@ public static partial class BrowserBridge
                 if (ReferenceEquals(child, parent)) return true;
             return false;
         }
-        // Only inspect existing elements. This diagnostic never realizes, focuses,
-        // rearranges or assigns TabIndex, even if a template has not loaded yet.
+        // Read existing elements only: no focus candidate search, event installation,
+        // focus mutation, template realization, rank repair or layout during snapshots.
         var cells = grid.GetNativeCells().Select(info => {
             var element = grid.GetCellControl(info.Address.RecordId, info.Address.Field)!;
             var body = VisualTreeHelper.GetParent(element);
@@ -49,62 +49,7 @@ public static partial class BrowserBridge
             attaches = grid.CellControlTreeAttachCount, detaches = grid.CellControlTreeDetachCount,
             binds = grid.CellControlBindCount, sizes = grid.CellControlSizeWriteCount,
             pooled = grid.PooledCellControlCount, realized = grid.RealizedCellControlCount,
-            grid.HasPendingCellEdits, grid.LastError, diagnostics = NativeFocusDiagnostics() }, Json);
-    }
-
-    // Installed only when the browser harness requests diagnostics, never by the app.
-    // Bounded read-only observations distinguish a bad candidate from duplicate input
-    // or a focus redirect. They deliberately do not handle events or repair controls.
-    private static readonly Queue<string> NativeFocusEvents = new();
-    private static bool _nativeFocusTraceInstalled;
-    private static string DescribeNativeFocus(DependencyObject? element)
-    {
-        if (element is null) return "null";
-        var result = element.GetType().Name + "#" + AutomationProperties.GetAutomationId(element);
-        if (element is UIElement ui)
-            result += $"[tab={ui.TabIndex},stop={ui.IsTabStop},nav={ui.TabFocusNavigation},visible={ui.Visibility}]";
-        if (element is FrameworkElement { DataContext: GridCellEditBuffer buffer })
-            result += $"@{buffer.RecordId}/{buffer.Field}";
-        return result;
-    }
-    private static void TraceNativeFocus(string text)
-    {
-        while (NativeFocusEvents.Count >= 32) NativeFocusEvents.Dequeue();
-        NativeFocusEvents.Enqueue(text);
-    }
-    private static object NativeFocusDiagnostics()
-    {
-        var grid = Page.DataGrid;
-        if (!_nativeFocusTraceInstalled)
-        {
-            _nativeFocusTraceInstalled = true;
-            grid.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, args) =>
-                TraceNativeFocus($"down {args.Key} handled={args.Handled} source={DescribeNativeFocus(args.OriginalSource as DependencyObject)}")), true);
-            grid.AddHandler(UIElement.KeyUpEvent, new KeyEventHandler((_, args) =>
-                TraceNativeFocus($"up {args.Key} handled={args.Handled} source={DescribeNativeFocus(args.OriginalSource as DependencyObject)}")), true);
-            grid.GettingFocus += (_, args) => TraceNativeFocus($"getting {args.Direction}: {DescribeNativeFocus(args.OldFocusedElement)} -> {DescribeNativeFocus(args.NewFocusedElement)}");
-            grid.LosingFocus += (_, args) => TraceNativeFocus($"losing {args.Direction}: {DescribeNativeFocus(args.OldFocusedElement)} -> {DescribeNativeFocus(args.NewFocusedElement)}");
-        }
-        string Candidate(FocusNavigationDirection direction)
-        {
-            try { return DescribeNativeFocus(FocusManager.FindNextElement(direction, new FindNextElementOptions { SearchRoot = grid })); }
-            catch (Exception error) { return error.GetType().Name + ": " + error.Message; }
-        }
-        var ancestry = new List<string>();
-        for (var element = grid.XamlRoot is null ? null : FocusManager.GetFocusedElement(grid.XamlRoot) as DependencyObject;
-            element is not null && ancestry.Count < 16; element = VisualTreeHelper.GetParent(element))
-            ancestry.Add(DescribeNativeFocus(element));
-        var trees = new List<string>();
-        void ReadTree(DependencyObject element, int depth)
-        {
-            if (depth > 10 || trees.Count >= 80) return;
-            trees.Add(new string(' ', depth) + DescribeNativeFocus(element));
-            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++) ReadTree(VisualTreeHelper.GetChild(element, i), depth + 1);
-        }
-        foreach (var cell in grid.GetNativeCells().OrderBy(cell => cell.Bounds.Y).ThenBy(cell => cell.Bounds.X).Take(2))
-            if (grid.GetCellControl(cell.Address.RecordId, cell.Address.Field) is { } element) ReadTree(element, 0);
-        return new { next = Candidate(FocusNavigationDirection.Next), previous = Candidate(FocusNavigationDirection.Previous),
-            ancestry, trees, events = NativeFocusEvents.ToArray() };
+            grid.HasPendingCellEdits, grid.LastError }, Json);
     }
 
     [JSExport]

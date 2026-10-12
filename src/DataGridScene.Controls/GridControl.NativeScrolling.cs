@@ -16,30 +16,26 @@ public sealed partial class GridControl
     public int AttachedCellControlCount => _nativeCells.Children.Count;
 
     // A layout-only Border/Panel is transparent to native tab-stop candidate search.
-    // Give its content a real, non-focusable Control scope so the cell's rank is
-    // compared before the independent TabIndex values of its descendants. This
-    // scope never becomes an extra tab stop and does not handle traversal keys.
+    // A non-focusable Control scope ranks the cell before its independent descendants.
+    // This scope never becomes an extra tab stop or handles native traversal keys.
     private sealed class NativeCellFocusScope : UserControl
     {
         public NativeCellFocusScope(GridControl owner)
         {
-            IsTabStop = false;
-            TabFocusNavigation = KeyboardNavigationMode.Local;
+            IsTabStop = false; TabFocusNavigation = KeyboardNavigationMode.Local;
             HorizontalContentAlignment = HorizontalAlignment.Stretch;
             VerticalContentAlignment = VerticalAlignment.Stretch;
-            Padding = new Thickness(0);
-            BorderThickness = new Thickness(0);
+            Padding = new Thickness(0); BorderThickness = new Thickness(0);
             MinWidth = MinHeight = 0;
-            GotFocus += (_, _) => owner.RestoreNativeKeyboardHost();
+            GettingFocus += (_, args) => owner.PrepareNativeKeyboardHost(this, args);
+            Unloaded += (_, _) => owner.CancelNativeKeyboardHost(this);
         }
     }
-    // No implementation or interop in desktop builds. The browser head restores
-    // DOM keyboard ownership after Uno releases a TextBox's shared HTML input.
-    partial void RestoreNativeKeyboardHost();
+    // No implementation or interop in desktop builds. Only the browser head needs
+    // to hand DOM keyboard ownership off when Uno releases its shared text input.
+    partial void PrepareNativeKeyboardHost(UIElement scope, GettingFocusEventArgs args);
+    partial void CancelNativeKeyboardHost(UIElement scope);
 
-    // Retain pooled controls in the same visual parent. Collapsed inactive hosts cannot
-    // paint, hit-test or enter the focus traversal. Their buffers are still deactivated.
-    // Reuse avoids unloading/reloading the native editor template on each scrolled row.
     private void AttachCellHost(NativeHost host)
     {
         if (host.Attached) return;
@@ -58,15 +54,13 @@ public sealed partial class GridControl
         // detaches application-owned content. Pooled hosts never take this path.
         if (host.Container.Child is NativeCellFocusScope scope)
         {
+            CancelNativeKeyboardHost(scope);
             var body = (UIElement?)scope.Content;
-            scope.Content = null;
-            host.Container.Child = null;
-            host.Container.Child = body;
+            scope.Content = null; host.Container.Child = null; host.Container.Child = body;
         }
     }
-    // During one reconciliation, the outgoing viewport is a transient reuse set.
-    // Do not throw away its 129th control just to recreate it for the incoming row.
-    // Only the unused remainder is subject to the persistent idle-pool limit.
+    // The outgoing viewport is a transient reuse set. Do not discard its 129th
+    // control only to recreate it immediately; cap just the unused persistent pool.
     private void TrimCellPool()
     {
         if (_pooledCells <= MaximumPooledCellControls) return;
@@ -81,12 +75,10 @@ public sealed partial class GridControl
     private void PlaceCellHost(NativeHost host, NativeCellPlacement placement)
     {
         var bounds = placement.Bounds; var clip = placement.ClipBounds;
-        // Rank only the private Control scope. Application descendants retain their
-        // own TabIndex, IsTabStop, enabled state and custom native Tab handling.
+        // Only private scopes are ranked. App descendants retain TabIndex, IsTabStop,
+        // enabled state and native key handling. Unchanged ranks are not rewritten.
         if (host.Container.Child is NativeCellFocusScope scope && scope.TabIndex != placement.TabIndex)
         { scope.TabIndex = placement.TabIndex; CellControlTabIndexWriteCount++; }
-        // Translation is a render change, not a Canvas.Left/Top arrange change.
-        // Dimensions remain full-cell dimensions even where a frozen pane clips them.
         if (host.Position.X != bounds.X) { host.Position.X = bounds.X; CellControlTranslationWriteCount++; }
         if (host.Position.Y != bounds.Y) { host.Position.Y = bounds.Y; CellControlTranslationWriteCount++; }
         if (host.Container.Width != bounds.Width) { host.Container.Width = bounds.Width; CellControlSizeWriteCount++; }
