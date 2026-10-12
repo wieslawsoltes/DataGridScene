@@ -20,7 +20,7 @@ use real pointer, keyboard, clipboard and native text input.
 
 | Harness | Browser checks | Additional embedded contracts / focus |
 |---|---:|---|
-| `native-tab-order.mjs` | 11 | Eight shared geometry contracts; actual Tab/Shift+Tab, recycled hosts, frozen panes, composite controls and work counters. |
+| `native-tab-order.mjs` | 15 | Eight shared geometry contracts; actual Tab/Shift+Tab, recycled hosts, composite controls, browser keyboard handoff, accessibility entry and external focus. |
 | `native-cells.mjs` | 24 | Eleven real Uno API contracts; text, number, choice, date, action and slider controls; validation, identity and undo. |
 | `native-modes.mjs` | 29 | Nine real Uno API contracts; every example in both modes, preserved state, native input and retained-tree scrolling. |
 | `native-input-regressions.mjs` | 4 | Recycled double-clicks, outstanding validation messages and native display context menus. |
@@ -35,7 +35,7 @@ use real pointer, keyboard, clipboard and native text input.
 | `value-filters.mjs` | 13 | Checked inclusion/exclusion, search, persistence and virtualized 100,000-record distinct-value filtering. |
 | `chrome.mjs` | 18 | Twelve real Uno API contracts; command ribbon, themes, full-width view and filter-panel interactions. |
 
-The inventory is **229 browser checks**, **359 shared managed/geometry contracts**, and
+The inventory is **233 browser checks**, **359 shared managed/geometry contracts**, and
 **42 individual real Uno control API contracts**. Embedded invocations are included in
 the browser-check count; they are not additional independent browser scenarios. Counts
 alone do not show whether any particular run passed.
@@ -83,9 +83,11 @@ popup layout. Fresh-start scrollbar tests likewise wait for real, nonzero templa
 parts, then inspect screenshot-pixel contrast without hover input or forced layout.
 
 Tab-order diagnostics inspect existing hosts and focus. They never assign TabIndex,
-move focus, invoke templates or materialize offscreen cells. The composite-cell fixture
-explicitly creates real child controls with reversed TabIndex values and an optional
-disabled child; actual browser keys must honor those values.
+move focus, search for the next candidate, subscribe to input events, invoke templates
+or materialize offscreen cells. The composite-cell fixture explicitly creates real
+child controls with reversed TabIndex values and an optional disabled child; actual
+browser keys must honor those values. Browser-handoff checks retain the accessibility
+entry and test both native text input and external DOM focus ownership.
 
 ## Offline compiler and performance checks
 

@@ -1,63 +1,97 @@
 # Native cell Tab order
 
 Native cell hosts have an explicit viewport-local focus rank. Tab and Shift+Tab
-follow visible data rows and the actual left-to-right column positions rather than the
-order in which controls happened to be created or recycled. Frozen panes are ranked by
-visible position, not by the Skia painter's middle/left/right layering order. Group and
-detail rows, hidden columns and zero-width intersections have no native cell ranks.
+follow visible data rows and actual left-to-right column positions rather than the
+order in which controls were created or recycled. Frozen panes are ranked by visible
+position, not by the Skia painter's middle/left/right layering order. Group/detail
+rows, hidden columns and zero-width intersections do not receive native cell ranks.
+
+## Retained local focus scopes
 
 `NativeCellPlacement.TabIndex` is computed by `NativeCellGeometry.Collect` in the
 renderer-independent geometry portion of the rendering package. Only intersecting
-column slots are sorted, once per collection. Only the requested, intersecting cells
-are ranked. Indices start at zero for the viewport, so a large underlying row ordinal
-cannot overflow them. The existing maximum-cell limit remains enforced.
+column slots are sorted, once per collection. Only requested, intersecting data cells
+are ranked. Indices start at zero for the viewport, so deep source-row ordinals cannot
+overflow them. The existing maximum-cell limit remains enforced.
 
-`GridControl` assigns the rank to a private, non-focusable `UserControl` scope inside
-each retained host, not to application-owned child controls. A layout-only Border or
-Panel is transparent to Uno's tab-stop candidate search: ranking it alone can compare
-an editor's child index against unrelated cells and skip NumberBox/composite content.
-The Control scope participates as a candidate containing focusable children, with
-`TabFocusNavigation.Local` and `IsTabStop=false`. It never becomes an extra tab stop.
+`GridControl` assigns each rank to a private, non-focusable `UserControl` scope, not
+to application child controls. A layout-only Border/Panel is transparent to Uno's
+focus-candidate search; ranking it alone can mix a descendant's index with unrelated
+cells. The Control scope participates as a candidate containing focusable children,
+with `TabFocusNavigation.Local` and `IsTabStop=false`. It is not another Tab stop.
 
-The normal Uno focus system continues to honor disabled controls, a composite cell's
-own TabIndex values, and native editor key handling. Pending-input validation still
-runs before a native editor loses focus. A scope is created once with a new host and
-retained with the complete pooled tree. Pool members remain collapsed and out of
-focus traversal; repairing order never detaches or reinserts them. Scope cleanup
-restores the direct body before releasing application content, including failed
-attachment paths.
+The normal Uno focus system honors disabled controls, a composite cell's own TabIndex
+values and native editor key handling. Pending-input validation runs before leaving
+an editor. The scope is created once with a new host and retained with the complete
+pooled tree. Idle pool members remain collapsed and outside focus traversal. Scope
+cleanup restores the direct body before releasing application content, including
+failed attachment paths.
 
-Unchanged scope ranks are not reassigned. `CellControlTabIndexWriteCount` makes those
-writes observable alongside attachment, binding, creation, translation and size counters.
-Small translations within an unchanged visible row set require no TabIndex writes.
-Large jumps can require new ranks on reused hosts but do not require new controls.
-There is one additional lightweight scope per retained native host, not per record in
-the source table. No per-frame focus-tree traversal or synthetic Tab handling is added.
+Unchanged ranks are not reassigned. `CellControlTabIndexWriteCount` exposes these writes
+alongside attachment, binding, creation, translation and size counters. Subrow movement
+with an unchanged visible set does not write TabIndex. Larger jumps can change ranks
+on reused hosts without creating controls. There is one extra lightweight scope per
+retained native host, not per source record. No per-frame focus-tree scan or synthetic
+Tab traversal is added.
 
-This fixes ordering of the **currently realized native controls**. It does not make
-canvas-only cells native tab stops, implement virtualized accessibility providers, or
-automatically open an edit-only template for every offscreen cell. Existing grid arrow
-navigation and F2 editing remain separate from native focus traversal. It does not
-claim full DevExpress keyboard or accessibility parity.
+## Browser text-to-control keyboard handoff
+
+Uno's Skia browser host uses a shared HTML input while a native TextBox is editing.
+When focus moves to a non-text control, its input is detached in a microtask. With the
+accessibility entry button still present, a subsequent Tab whose browser target is
+BODY is intentionally left to browser navigation. Managed focus alone therefore does
+not guarantee that the next Tab is delivered to the selected native control.
+
+The browser-only compatibility path observes the exact outgoing input at GettingFocus,
+before the framework schedules its detach. A one-shot blur listener queues a microtask
+that completes the handoff only after that input is disconnected and no replacement
+text input exists. It focuses the existing non-hidden application host with a negative
+TabIndex, not the aria-hidden canvas, and never adds a sequential Tab stop. Ordinary
+native focus navigation still chooses the next cell/control.
+
+Cancelled or superseded focus changes leave the input connected or create a replacement,
+so the handoff does nothing. Moving to another native scope cancels previous work;
+unloading/releasing the destination also removes the listener and invalidates an already
+queued callback. No document-level input listener, polling loop or global mutable
+helper is installed. The handoff refuses to take browser focus from an external input,
+semantic control, accessibility entry button or an unfocused browser document.
+
+The initial accessibility entry remains keyboard reachable. Text-to-text moves retain
+Uno's real input, including IME behavior. Desktop builds contain no browser interop for
+this path. Browser interop evaluates only a constant library-owned script, never model
+values or application input; strict CSP deployments that disallow evaluation require
+host-side integration instead. This compatibility path is tied to the tested Uno Skia
+browser input lifecycle and should be reviewed when that dependency changes.
+
+## Boundaries
+
+This addresses the **currently realized native controls**. It does not make canvas-only
+cells native Tab stops, implement virtualized accessibility providers, or automatically
+open editors for offscreen cells. Grid arrow navigation and F2 editing remain separate.
+Full DevExpress keyboard/API/accessibility parity and all native desktop/browser/IME
+combinations have not been established.
 
 ## Validation
 
-Eight shared geometry contracts run on .NET and in the actual WASM runtime. They cover
-frozen panes, reordering, sorting, group/detail rows, clipping, subsets, 100,000-row deep
-scrolling and rejection at the native-cell limit.
+Eight geometry contracts run on .NET and in the actual WASM runtime: frozen panes,
+reordering, sorting, group/detail rows, clipping, requested-field subsets, 100,000-row
+deep scrolling and the native-cell limit.
 
-`tests/browser/native-tab-order.mjs` adds eleven checks using real Tab/Shift+Tab and
-pointer input. They check initial/recycled order, frozen panes, sorted/grouped data,
-invalid edits, custom composite child TabIndex values, disabled child controls, and
-bounded work. Diagnostic reads inspect existing controls; they never set focus, repair
-TabIndex or realize elements. The eight geometry contracts are executed by one of these
-browser checks. Existing suites remain enabled.
+`tests/browser/native-tab-order.mjs` has fifteen real-input checks covering forward and
+reverse traversal, recycled controls, frozen panes, sorted/grouped data, validation,
+composite child TabIndex values, disabled children, browser text/control handoffs,
+fresh accessibility entry, external DOM focus and retained-tree work counters.
+Diagnostics only read existing cells/focus/counters; they do not search for or set the
+next focus candidate, attach input handlers, force layout or realize controls.
 
 The complete inventory is 359 shared managed/geometry contracts (351 baseline plus
-8 new), 229 browser checks across 14 harnesses, and 42 embedded real Uno control API
-contracts. Counts describe test inventory; consult the commit's Actions result for
-pass/fail status. CI uses SwiftShader and is not a hardware GPU throughput benchmark.
+eight new), 233 browser checks across fourteen harnesses, and 42 embedded individual
+Uno API contracts. Counts are inventory, not evidence that a particular run passed.
+Consult the exact commit's Actions reports. Browser CI uses ANGLE/SwiftShader and does
+not establish hardware GPU throughput or end-to-end input latency.
 
 References: [UIElement.TabIndex](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.uielement.tabindex),
 [UIElement.TabFocusNavigation](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.uielement.tabfocusnavigation),
-and [Uno focus candidate implementation](https://github.com/unoplatform/uno/blob/0599dada9e9ed2eed2ee4a05f039c78351c8bc3b/src/Uno.UI/UI/Xaml/Input/Internal/FocusProperties.cs).
+[Uno focus candidate implementation](https://github.com/unoplatform/uno/blob/da217df2312e9e39676880f9cb4b8d519cc297e0/src/Uno.UI/UI/Xaml/Input/Internal/FocusProperties.cs),
+[Uno browser keyboard dispatch](https://github.com/unoplatform/uno/blob/da217df2312e9e39676880f9cb4b8d519cc297e0/src/Uno.UI.Runtime.Skia.WebAssembly.Browser/ts/Runtime/BrowserKeyboardInputSource.ts),
+and [Uno shared input lifecycle](https://github.com/unoplatform/uno/blob/da217df2312e9e39676880f9cb4b8d519cc297e0/src/Uno.UI.Runtime.Skia.WebAssembly.Browser/ts/Runtime/BrowserInvisibleTextBoxViewExtension.ts).

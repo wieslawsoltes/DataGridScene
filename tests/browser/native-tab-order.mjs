@@ -123,7 +123,31 @@ try {
       document.body.appendChild(button);
     });
     try {
-      await page.locator('#external-focus-fixture').click(); await settle(); await command('redraw');
+      // Establish external DOM ownership explicitly. Uno's BODY pointer source
+      // preventDefaults arbitrary elements outside its native HTML-host subtree;
+      // a click there never established this precondition. This test is about
+      // retaining external focus, not unregistered HTML pointer integration.
+      await page.locator('#external-focus-fixture').focus();
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'external-focus-fixture');
+      await settle(); await command('redraw');
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'external-focus-fixture');
+
+      // Stronger race: a host application takes DOM focus during the outgoing
+      // input's actual blur, before the library handoff microtask runs. Real Tab
+      // still drives the managed transition; the competing fixture must win.
+      await focusCompany(10001); await tabTo({ recordId: 10001, field: 'Quantity' });
+      await page.waitForFunction(() => document.activeElement?.id === 'uno-input');
+      await page.evaluate(() => {
+        const input = document.getElementById('uno-input');
+        const external = document.getElementById('external-focus-fixture');
+        input.addEventListener('blur', () => {
+          external.dataset.observedBlur = 'true';
+          external.focus({ preventScroll: true });
+        }, { once: true });
+      });
+      await page.keyboard.press('Tab');
+      await page.waitForFunction(() => document.getElementById('external-focus-fixture')?.dataset.observedBlur === 'true');
+      await settle(); await command('redraw');
       assert.equal(await page.evaluate(() => document.activeElement?.id), 'external-focus-fixture');
     } finally { await page.evaluate(() => document.getElementById('external-focus-fixture')?.remove()); }
   });
