@@ -1,5 +1,7 @@
 using DataGridScene.Rendering.Skia;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 
 namespace DataGridScene.Controls;
@@ -13,18 +15,48 @@ public sealed partial class GridControl
     public long CellControlTabIndexWriteCount { get; private set; }
     public int AttachedCellControlCount => _nativeCells.Children.Count;
 
+    // A layout-only Border/Panel is transparent to native tab-stop candidate search.
+    // Give its content a real, non-focusable Control scope so the cell's rank is
+    // compared before the independent TabIndex values of its descendants. This
+    // scope never becomes an extra tab stop and does not handle traversal keys.
+    private sealed class NativeCellFocusScope : UserControl
+    {
+        public NativeCellFocusScope()
+        {
+            IsTabStop = false;
+            TabFocusNavigation = KeyboardNavigationMode.Local;
+            HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            VerticalContentAlignment = VerticalAlignment.Stretch;
+            Padding = new Thickness(0);
+            BorderThickness = new Thickness(0);
+            MinWidth = MinHeight = 0;
+        }
+    }
+
     // Retain pooled controls in the same visual parent. Collapsed inactive hosts cannot
     // paint, hit-test or enter the focus traversal. Their buffers are still deactivated.
     // Reuse avoids unloading/reloading the native editor template on each scrolled row.
     private void AttachCellHost(NativeHost host)
     {
         if (host.Attached) return;
+        var body = host.Container.Child;
+        host.Container.Child = null;
+        host.Container.Child = new NativeCellFocusScope { Content = body };
         _nativeCells.Children.Add(host.Container); host.Attached = true; CellControlTreeAttachCount++;
     }
     private void DetachCellHost(NativeHost host)
     {
         if (!host.Attached) return;
         _nativeCells.Children.Remove(host.Container); host.Attached = false; CellControlTreeDetachCount++;
+        // Restore the direct body so ReleaseCellHost can detach application-owned
+        // content. Pooled hosts never take this path and retain their entire tree.
+        if (host.Container.Child is NativeCellFocusScope scope)
+        {
+            var body = scope.Content;
+            scope.Content = null;
+            host.Container.Child = null;
+            host.Container.Child = body;
+        }
     }
     // During one reconciliation, the outgoing viewport is a transient reuse set.
     // Do not throw away its 129th control just to recreate it for the incoming row.
@@ -43,11 +75,10 @@ public sealed partial class GridControl
     private void PlaceCellHost(NativeHost host, NativeCellPlacement placement)
     {
         var bounds = placement.Bounds; var clip = placement.ClipBounds;
-        // Keep each cell a local focus scope. Rank the host, not application-owned
-        // descendants: composite controls retain their own TabIndex and Tab handling.
-        // No child removal/insertion is needed to repair focus order after recycling.
-        if (host.Container.TabIndex != placement.TabIndex)
-        { host.Container.TabIndex = placement.TabIndex; CellControlTabIndexWriteCount++; }
+        // Rank only the private Control scope. Application descendants retain their
+        // own TabIndex, IsTabStop, enabled state and custom native Tab handling.
+        if (host.Container.Child is NativeCellFocusScope scope && scope.TabIndex != placement.TabIndex)
+        { scope.TabIndex = placement.TabIndex; CellControlTabIndexWriteCount++; }
         // Translation is a render change, not a Canvas.Left/Top arrange change.
         // Dimensions remain full-cell dimensions even where a frozen pane clips them.
         if (host.Position.X != bounds.X) { host.Position.X = bounds.X; CellControlTranslationWriteCount++; }
