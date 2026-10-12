@@ -25,6 +25,9 @@ public sealed partial class GridControl
         foreach (var bar in new[] { _vertical, _horizontal })
         {
             bar.IndicatorMode = ScrollingIndicatorMode.MouseIndicator;
+            // Uno's supported opt-in keeps the native template expanded instead of
+            // fading arrows/track in its conscious state, and enables real touch dragging.
+            Uno.UI.Toolkit.ScrollBarExtensions.SetIsTouchThumbDragEnabled(bar, true);
             bar.IsTabStop = true;
             bar.HorizontalAlignment = HorizontalAlignment.Stretch;
             bar.VerticalAlignment = VerticalAlignment.Stretch;
