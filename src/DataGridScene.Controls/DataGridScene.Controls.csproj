@@ -5,6 +5,7 @@
     <OutputType>Library</OutputType>
     <UnoFeatures>Skia;SkiaRenderer</UnoFeatures>
     <IsPackable>true</IsPackable>
+    <AllowUnsafeBlocks Condition="'$(TargetFramework)' == 'net10.0-browserwasm'">true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../DataGridScene.Core/DataGridScene.Core.csproj" />

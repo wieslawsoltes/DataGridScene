@@ -1,12 +1,19 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using System.Runtime.InteropServices.JavaScript;
 
 namespace DataGridScene.Controls;
 
 public sealed partial class GridControl
 {
     private bool _nativeKeyboardHostQueued;
+
+    // Use framework interop directly: the reusable control library must not depend
+    // on the sample's Uno.Foundation.Runtime.WebAssembly host reference. This import
+    // only evaluates the constant implementation below, never application input.
+    [JSImport("globalThis.eval")]
+    private static partial void EvaluateNativeKeyboardHost(string script);
 
     partial void RestoreNativeKeyboardHost()
     {
@@ -20,7 +27,7 @@ public sealed partial class GridControl
             _nativeKeyboardHostQueued = false;
             if (_disposed || XamlRoot is null || !IsFocusWithin(_nativeCells) ||
                 FocusManager.GetFocusedElement(XamlRoot) is null or TextBox) return;
-            Uno.Foundation.WebAssemblyRuntime.InvokeJS("""
+            EvaluateNativeKeyboardHost("""
                 (() => {
                     const active = document.activeElement;
                     // Never take focus from an external DOM input, a semantic control,
