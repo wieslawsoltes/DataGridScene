@@ -56,6 +56,8 @@ Exports use model values and formatting, not a screenshot or serialization of ar
 
 ## Validation
 
-The shared suite contains 347 managed/raster contracts, including identity recycling, validation, version conflicts, cancellation, bound values and viewport/frozen-pane geometry. The 22-check native-cell browser suite exercises real controls and native input, and also runs 11 individual Uno API contracts. Existing suites remain enabled. Read the exact commit's CI results rather than treating this inventory as a pass claim.
+The shared suite contains 351 managed/raster contracts, including identity recycling, validation, version conflicts, cancellation, bound values and viewport/frozen-pane geometry. The 22-check native-cell browser suite exercises real controls and native input, and also runs 11 individual Uno API contracts. Existing suites remain enabled. Read the exact commit's CI results rather than treating this inventory as a pass claim.
 
 Browser correctness uses software ANGLE/SwiftShader. Control count and identity assertions are bounded-work tests, not hardware GPU frame rate or end-to-end input-latency benchmarks. Native desktop compilation is not a complete Windows/macOS/Linux runtime matrix.
+
+Row-dependent template selection and appearance-only updates are described in [Template selectors](template-selectors.md).

@@ -12,7 +12,11 @@ using Windows.System;
 namespace DataGridScene.Controls;
 
 public sealed record NativeCellInfo(CellAddress Address, string ControlType, RectD Bounds, RectD ClipBounds,
-    bool IsDirty, bool CanEdit, string? Error);
+    bool IsDirty, bool CanEdit, string? Error)
+{
+    public bool IsSelected { get; init; }
+    public bool IsFocused { get; init; }
+}
 
 public sealed partial class GridControl
 {
@@ -22,6 +26,8 @@ public sealed partial class GridControl
         public readonly FrameworkElement Content = content;
         public readonly Border Container = new() { Child = content, Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
         public readonly RectangleGeometry Clip = new();
+        public readonly Border Adorner = new() { IsHitTestVisible = false };
+        public GridCellVisualState? Appearance;
         public GridCellEditBuffer? Buffer;
         public NativeCellPlacement? Placement;
         public PropertyChangedEventHandler? Listener;
@@ -44,6 +50,9 @@ public sealed partial class GridControl
     public long ReusedCellControlCount { get; private set; }
     public long CellControlBindCount { get; private set; }
     public long CellControlPlacementCount { get; private set; }
+    public long CellControlAppearanceCount { get; private set; }
+    private readonly SolidColorBrush _cellFocusBrush = new(Microsoft.UI.Colors.DodgerBlue);
+    private readonly SolidColorBrush _cellErrorBrush = new(Microsoft.UI.Colors.Red);
     public const int MaximumRealizedCellControls = 4096;
     public const int MaximumPooledCellControls = 128;
     public bool HasPendingCellEdits => _cellHosts.Values.Any(host => host.Buffer?.IsDirty == true);
@@ -56,9 +65,9 @@ public sealed partial class GridControl
         if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
         if (_cellTemplates.TryGetValue(field, out var previous) && ReferenceEquals(previous, template)) return;
         foreach (var pair in _cellHosts.Where(pair => pair.Key.Field == field).ToArray()) RecycleCell(pair.Key, pair.Value, retain: false);
-        if (template is null) { _cellTemplates.Remove(field); _cellFields.Remove(field); }
+        if (template is null) { _cellTemplates.Remove(field); if (!_displaySelectors.ContainsKey(field)) _cellFields.Remove(field); }
         else { _cellTemplates[field] = template; _cellFields.Add(field); }
-        TrimUnusedPools(); _nativeFrame = null; SynchronizeCellControls(); Redraw();
+        InvalidateCellTemplates();
     }
     /// <summary>Use a native control only during editing; other cells keep the inexpensive canvas display.</summary>
     public void SetCellEditTemplate(string field, GridCellTemplate? template)
@@ -66,16 +75,18 @@ public sealed partial class GridControl
         RequireView(); field = Table!.Schema[field].Field;
         if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
         if (template is null) _editCellTemplates.Remove(field); else _editCellTemplates[field] = template;
-        TrimUnusedPools();
+        InvalidateCellTemplates();
     }
     public void SetCellEditDataTemplate(string field, DataTemplate? template) =>
         SetCellEditTemplate(field, template is null ? null : GridCellTemplate.FromDataTemplate(template));
     private bool BeginNativeCellEdit(long recordId, string field)
     {
-        if (!_cellTemplates.ContainsKey(field) && !_editCellTemplates.ContainsKey(field)) return false;
+        if (!_cellFields.Contains(field) && !_editCellTemplates.ContainsKey(field) && !_editSelectors.ContainsKey(field)) return false;
         if (!CommitEdit()) return true;
-        if (_editCellTemplates.ContainsKey(field) && !IsReadOnly && !Table!.Schema[field].IsReadOnly)
-            _nativeEditCell = new(recordId, field);
+        var address = new CellAddress(recordId, field);
+        var edit = !IsReadOnly && !Table!.Schema[field].IsReadOnly ? ResolveCellTemplate(address, editing: true) : null;
+        if (edit is null && ResolveCellTemplate(address, editing: false) is null) return false;
+        if (edit is not null) _nativeEditCell = address;
         Selection.Select(View!, new(recordId, field)); EnsureVisible(new(recordId, field));
         _nativeFrame = null; SynchronizeCellControls();
         if (_cellHosts.TryGetValue(new(recordId, field), out var host))
@@ -92,11 +103,11 @@ public sealed partial class GridControl
     {
         RequireView();
         if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
-        ResetCellControls(); _cellTemplates.Clear(); _editCellTemplates.Clear(); _cellFields.Clear(); Renderer.IsNativeCell = null; Redraw();
+        ResetCellControls(); _cellTemplates.Clear(); _editCellTemplates.Clear(); _displaySelectors.Clear(); _editSelectors.Clear(); _templateChoices.Clear(); _cellFields.Clear(); Renderer.IsNativeCell = null; Redraw();
     }
     public IReadOnlyList<NativeCellInfo> GetNativeCells() => _cellHosts.Values.Where(host => host.Buffer is not null && host.Placement is not null)
         .Select(host => new NativeCellInfo(host.Buffer!.Address, host.Content.GetType().Name, host.Placement!.Bounds,
-            host.Placement.ClipBounds, host.Buffer.IsDirty, host.Buffer.CanEdit, host.Buffer.Error)).ToArray();
+            host.Placement.ClipBounds, host.Buffer.IsDirty, host.Buffer.CanEdit, host.Buffer.Error) { IsSelected = host.Appearance?.IsSelected == true, IsFocused = host.Appearance?.IsFocused == true }).ToArray();
     /// <summary>Returns the currently realized element only; never materializes an offscreen cell.</summary>
     public FrameworkElement? GetCellControl(long recordId, string field) =>
         Table is not null && Table.Schema.TryGetColumn(field, out var column) && _cellHosts.TryGetValue(new(recordId, column.Field), out var host) ? host.Content : null;
@@ -133,11 +144,15 @@ public sealed partial class GridControl
     private NativeHost AcquireCell(GridCellTemplate template)
     {
         if (_cellPools.TryGetValue(template, out var pool) && pool.TryPop(out var recycled))
-        { _pooledCells--; ReusedCellControlCount++; return recycled; }
+        { _pooledCells--; ReusedCellControlCount++; if (pool.Count == 0) _cellPools.Remove(template); return recycled; }
         var element = template.Create() ?? throw new InvalidOperationException("A cell factory returned null.");
         if (VisualTreeHelper.GetParent(element) is not null || _cellHosts.Values.Any(host => ReferenceEquals(host.Content, element)))
             throw new InvalidOperationException("A cell factory must create a fresh, unparented element.");
         var host = new NativeHost(template, element); host.Container.Clip = host.Clip;
+        // Paint the focus/error outline above opaque native content without shrinking
+        // the editor's measure area or moving its text when validation state changes.
+        host.Container.Child = null;
+        var body = new Grid(); body.Children.Add(element); body.Children.Add(host.Adorner); host.Container.Child = body;
         host.Container.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) =>
         {
             if (_syncingNativeCells || host.Binding || host.Buffer is not { IsActive: true } buffer) return;
@@ -223,17 +238,30 @@ public sealed partial class GridControl
         {
             buffer.SynchronizeBinding(() => host.Template.Bind?.Invoke(host.Content, buffer)); CellControlBindCount++;
             host.Version = buffer.Record.Version; host.ReadOnly = !buffer.CanEdit;
-            host.Container.BorderThickness = buffer.Error is null ? new Thickness(0) : new Thickness(1);
-            host.Container.BorderBrush = buffer.Error is null ? null : new SolidColorBrush(Microsoft.UI.Colors.Red);
+            RefreshCellAppearance(host);
             ToolTipService.SetToolTip(host.Container, buffer.Error);
         }
         finally { host.Binding = false; }
+    }
+    private void RefreshCellAppearance(NativeHost host)
+    {
+        if (host.Buffer is not { } buffer) return;
+        var state = new GridCellVisualState(Selection.ContainsCell(buffer.RecordId, buffer.Field),
+            Selection.FocusedCell == buffer.Address, _nativeEditCell == buffer.Address,
+            Renderer.HoveredRecordId == buffer.RecordId, DarkTheme);
+        var accent = Renderer.Palette.Accent;
+        _cellFocusBrush.Color = Windows.UI.Color.FromArgb(accent.Alpha, accent.Red, accent.Green, accent.Blue);
+        host.Adorner.BorderThickness = buffer.Error is not null || state.IsFocused ? new Thickness(1) : new Thickness(0);
+        host.Adorner.BorderBrush = buffer.Error is not null ? _cellErrorBrush : _cellFocusBrush;
+        if (host.Appearance == state) return;
+        buffer.SynchronizeBinding(() => host.Template.UpdateAppearance?.Invoke(host.Content, state));
+        host.Appearance = state; CellControlAppearanceCount++;
     }
     private void SynchronizeCellControls()
     {
         if (_disposed || _dataUpdateDepth > 0) return;
         if (_syncingNativeCells || _committingNativeCells || _cellHosts.Values.Any(host => host.Buffer?.IsCommitting == true)) { _nativeSyncPending = true; return; }
-        if (Frame is null || Table is null || View is null || _cellTemplates.Count == 0 && _nativeEditCell is null)
+        if (Frame is null || Table is null || View is null || _cellFields.Count == 0 && _nativeEditCell is null)
         { if (_cellHosts.Count > 0) ResetCellControls(); return; }
         // Selection pruning can notify before the row-height rebuild on a reset.
         // Never reconcile against a frame belonging to the previous view/row count.
@@ -245,15 +273,34 @@ public sealed partial class GridControl
             Renderer.IsNativeCell ??= address => _cellHosts.TryGetValue(address, out var host) && host.Placement is not null;
             var frame = Frame;
             bool geometryChanged = !ReferenceEquals(_nativeFrame, frame);
-            if (geometryChanged)
+            bool choicesChanged = _displaySelectors.Count > 0 || _editSelectors.Count > 0;
+            choicesChanged &= _templateTableRevision != Table.Revision || _templateReadOnly != IsReadOnly;
+            if (geometryChanged || choicesChanged)
             {
                 var fields = _cellFields;
                 if (_nativeEditCell is { } edit) { fields = new(_cellFields, StringComparer.OrdinalIgnoreCase); fields.Add(edit.Field); }
                 var placements = NativeCellGeometry.Collect(frame, fields, MaximumRealizedCellControls)
                     .Where(cell => _cellFields.Contains(cell.Address.Field) || cell.Address == _nativeEditCell).ToArray();
-                GridCellTemplate Template(CellAddress address) => address == _nativeEditCell && _editCellTemplates.TryGetValue(address.Field, out var editTemplate)
-                    ? editTemplate : _cellTemplates[address.Field];
-                var wanted = placements.Select(cell => cell.Address).ToHashSet();
+                // Prune before invoking application code: a selector that throws midway
+                // through repeated scrolls must not accumulate offscreen cached choices.
+                var visible = placements.Select(cell => cell.Address).ToHashSet();
+                PruneTemplateChoices(visible);
+                var selected = new Dictionary<CellAddress, GridCellTemplate>();
+                // Resolve every candidate before changing hosts. Versioned cache entries
+                // include null (canvas fallback); selectors never run from Draw().
+                foreach (var placement in placements)
+                {
+                    var address = placement.Address;
+                    GridCellTemplate? template;
+                    if (_cellHosts.TryGetValue(address, out var active) && active.Buffer?.IsDirty == true)
+                        template = active.Template; // Don't replace an editor with pending input.
+                    else template = (address == _nativeEditCell ? ResolveCellTemplate(address, editing: true) : null)
+                        ?? ResolveCellTemplate(address, editing: false);
+                    if (template is not null) selected.Add(address, template);
+                }
+                placements = placements.Where(cell => selected.ContainsKey(cell.Address)).ToArray();
+                GridCellTemplate Template(CellAddress address) => selected[address];
+                var wanted = selected.Keys.ToHashSet();
                 foreach (var pair in _cellHosts.ToArray())
                 {
                     var host = pair.Value;
@@ -288,12 +335,15 @@ public sealed partial class GridControl
                         CellControlPlacementCount++;
                     }
                 }
-                _nativeFrame = frame;
+                _nativeFrame = frame; _templateTableRevision = Table.Revision; _templateReadOnly = IsReadOnly;
                 if (!ReferenceEquals(frame, Frame)) _nativeSyncPending = true;
             }
             foreach (var host in _cellHosts.Values)
+            {
                 if (host.Buffer is { } buffer && (host.Version != buffer.Record.Version || host.ReadOnly == buffer.CanEdit))
                 { buffer.Refresh(); RefreshCellHost(host); }
+                else RefreshCellAppearance(host);
+            }
         }
         catch (Exception error) { Report(error); }
         finally
@@ -324,7 +374,7 @@ public sealed partial class GridControl
     }
     private void UnbindCell(NativeHost host)
     {
-        var buffer = host.Buffer; host.Buffer = null; host.Placement = null; host.Binding = true;
+        var buffer = host.Buffer; host.Buffer = null; host.Placement = null; host.Appearance = null; host.Binding = true;
         try
         {
             if (buffer is not null)
@@ -338,13 +388,15 @@ public sealed partial class GridControl
     }
     private void ReleaseCellHost(NativeHost host)
     {
-        UnbindCell(host); host.Container.Child = null;
+        UnbindCell(host);
+        if (host.Container.Child is Grid body) body.Children.Clear();
+        host.Container.Child = null;
         try { host.Template.Release?.Invoke(host.Content); } catch (Exception error) { Report(error); }
     }
     private void TrimUnusedPools()
     {
         foreach (var pair in _cellPools.ToArray())
-            if (!_cellTemplates.ContainsValue(pair.Key) && !_editCellTemplates.ContainsValue(pair.Key))
+            if (_displaySelectors.Count == 0 && _editSelectors.Count == 0 && !_cellTemplates.ContainsValue(pair.Key) && !_editCellTemplates.ContainsValue(pair.Key))
             {
                 foreach (var host in pair.Value) { ReleaseCellHost(host); _pooledCells--; }
                 _cellPools.Remove(pair.Key);
@@ -358,6 +410,7 @@ public sealed partial class GridControl
             foreach (var pair in _cellHosts.ToArray()) RecycleCell(pair.Key, pair.Value, retain: false);
             foreach (var pool in _cellPools.Values) foreach (var host in pool) ReleaseCellHost(host);
             _cellPools.Clear(); _pooledCells = 0; _nativeEditCell = null; _nativeFrame = null; Renderer.IsNativeCell = null;
+            _templateChoices.Clear(); _templateTableRevision = -1;
         }
         finally { _syncingNativeCells = false; }
     }

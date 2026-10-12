@@ -49,6 +49,12 @@ jobs:
           APP_URL: ${{ steps.deployment.outputs.page_url }}
           EXPECTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
         run: node scripts/verify-deployment.mjs
+      - name: Verify adaptive native editors on public Pages
+        env:
+          APP_URL: ${{ steps.deployment.outputs.page_url }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          BROWSER_RESULTS: artifacts/deployed-verification
+        run: node tests/browser/template-selectors.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

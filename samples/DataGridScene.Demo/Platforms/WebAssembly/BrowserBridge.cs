@@ -18,12 +18,13 @@ public static partial class BrowserBridge
         var page = Page; var grid = page.DataGrid; var view = grid.View; var frame = grid.Frame; var origin = grid.SurfaceOrigin();
         return JsonSerializer.Serialize(new
         {
+            adaptiveTemplates = page.AdaptiveTemplatesEnabled,
             nativeCalendar = page.NativeCalendarSnapshot(),
             nativeCells = grid.GetNativeCells().Select(cell => new {
-                address = new { cell.Address.RecordId, cell.Address.Field }, cell.ControlType, cell.Bounds, cell.ClipBounds, cell.IsDirty, cell.CanEdit, cell.Error
+                address = new { cell.Address.RecordId, cell.Address.Field }, cell.ControlType, cell.Bounds, cell.ClipBounds, cell.IsDirty, cell.CanEdit, cell.Error, cell.IsSelected, cell.IsFocused
             }).ToArray(),
             nativeStats = new { grid.RealizedCellControlCount, grid.PooledCellControlCount, grid.CreatedCellControlCount,
-                grid.ReusedCellControlCount, grid.CellControlBindCount, grid.CellControlPlacementCount, grid.HasPendingCellEdits },
+                grid.ReusedCellControlCount, grid.CellControlBindCount, grid.CellControlPlacementCount, grid.HasPendingCellEdits, grid.CellControlAppearanceCount, grid.TemplateSelectorCallCount, grid.CachedTemplateChoiceCount },
             chrome = page.ChromeSnapshot(),
             filterPanel = new { visible = grid.FilterPanel.Visibility == Visibility.Visible, items = grid.FilterPanel.Items.Select(item => new { item.Key, item.Caption, item.Description }).ToArray(), grid.FilterPanel.IsFilterEnabled, grid.FilterPanel.ContentBuildCount },
             ready = page.Ready, page.Scenario, page.RecordCount, filteredCount = view?.FilteredRecords.Count, viewRowCount = view?.Rows.Count,
@@ -74,6 +75,7 @@ public static partial class BrowserBridge
             switch (name)
             {
                 case "value-filter": grid.SetColumnValues(Text("field"), JsonSerializer.Deserialize<ColumnValueFilter>(input.GetProperty("filter").GetRawText(), Json)); break;
+                case "template-selector-fault": page.SetTemplateSelectorFault(input.GetProperty("value").GetBoolean()); break;
                 case "native-fixture": page.ApplyNativeCellScenario(input.GetProperty("count").GetInt32()); break;
                 case "validate-native-controls": return JsonSerializer.Serialize(new { ok = true, report = NativeControlChecks.Run() }, Json);
                 case "validate-chrome": return JsonSerializer.Serialize(new { ok = true, report = ChromeControlChecks.Run() }, Json);

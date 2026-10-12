@@ -18,12 +18,19 @@ public sealed partial class MainPage
         button.HorizontalAlignment = HorizontalAlignment.Stretch;
         button.HorizontalContentAlignment = HorizontalAlignment.Left;
         navigation.Children.Insert(navigation.Children.IndexOf(_actions["scenario-Performance"]), button);
+        var adaptive = Button("adaptive-templates", "Adaptive cell editors", () =>
+        {
+            if (Scenario != "Native controls") ApplyNativeCellScenario();
+            SetAdaptiveCellTemplates(!_adaptiveTemplates);
+        });
+        navigation.Children.Insert(navigation.Children.IndexOf(button) + 1, adaptive);
     }
     private void ApplyNativeCellScenario() => ApplyNativeCellScenario(10000);
     public void ApplyNativeCellScenario(int count)
     {
         if (count < 1 || count > 100000) throw new ArgumentOutOfRangeException(nameof(count));
         if (!DataGrid.CommitEdit()) return;
+        _adaptiveTemplates = false; _templateFault = false;
         Reload(count); Scenario = "Native controls"; DataGrid.RowHeight = 36; DataGrid.ShowBands = false;
         var visible = new HashSet<string> { "OrderID", "Company", "Quantity", "OrderDate", "Progress", "Status", "Verified", "Notes" };
         using (DataGrid.BeginDataUpdate())
@@ -56,6 +63,33 @@ public sealed partial class MainPage
         }
         RefreshStatus();
     }
+    private bool _adaptiveTemplates, _templateFault;
+    public bool AdaptiveTemplatesEnabled => Scenario == "Native controls" && _adaptiveTemplates;
+    public void SetAdaptiveCellTemplates(bool enabled)
+    {
+        if (!DataGrid.CommitEdit()) return;
+        _adaptiveTemplates = enabled;
+        if (!enabled)
+        {
+            DataGrid.SetCellTemplateSelector("Progress", null);
+            DataGrid.SetCellEditTemplateSelector("OrderDate", null);
+            return;
+        }
+        var slider = GridCellTemplates.Slider();
+        var text = GridCellTemplates.TextBox();
+        int progress = DataGrid.Table!.Schema["Progress"].Index;
+        // Stable template instances and read-only contexts; selectors never create UI
+        // or change records. Completed rows retain the standard progress display.
+        DataGrid.SetCellTemplateSelector("Progress", context =>
+        {
+            if (_templateFault) throw new InvalidOperationException("Template selector rejected the row.");
+            return Convert.ToDouble(context.Record[progress]) < 100 && !context.IsReadOnly ? slider : null;
+        });
+        DataGrid.SetCellEditTemplateSelector("OrderDate", context =>
+            Convert.ToDouble(context.Record[progress]) >= 100 ? text : null);
+    }
+    public void SetTemplateSelectorFault(bool enabled)
+    { _templateFault = enabled; DataGrid.InvalidateCellTemplates(); }
     // Read-only diagnostics over the actual popup visual tree. Tests click realized
     // native day elements instead of assuming the popup initially focuses a date.
     public object NativeCalendarSnapshot()

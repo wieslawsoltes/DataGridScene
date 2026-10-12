@@ -120,6 +120,32 @@ public static class NativeCellValidationSuite
             using var view=new GridView(table);var frame=new GridFrame(view,new(table.Schema),new(),new RowHeightIndex(100000),new(),500,600,0,1400000);
             var cells=NativeCellGeometry.Collect(frame,new HashSet<string>{"Value"});Check(cells.Count is >0 and <25);
         });
+        Test("native-buffer.noop-commit-and-refresh-do-not-notify",()=>{
+            var table=ValidationSuite.Fixture();var history=new EditHistory(table);
+            using var buffer=new GridCellEditBuffer(table,history,1,"Name");int notifications=0;
+            buffer.PropertyChanged+=(_,_)=>notifications++;
+            for(int i=0;i<1000;i++){Check(buffer.TryCommit());buffer.Refresh();}
+            Check(notifications==0&&!history.CanUndo);
+            buffer.Value="Changed";Check(notifications==1&&buffer.TryCommit()&&notifications==2);
+        });
+        Test("native-buffer.readonly-refresh-notifies-on-transition-only",()=>{
+            var table=ValidationSuite.Fixture();bool editable=true;
+            using var buffer=new GridCellEditBuffer(table,new(table),1,"Name",()=>editable);int notifications=0;
+            buffer.PropertyChanged+=(_,_)=>notifications++;
+            editable=false;buffer.Refresh();for(int i=0;i<100;i++)buffer.Refresh();Check(notifications==1&&!buffer.CanEdit);
+            editable=true;buffer.Refresh();Check(notifications==2&&buffer.CanEdit);
+        });
+        Test("native-buffer.changed-record-refresh-notifies-once",()=>{
+            var table=ValidationSuite.Fixture();using var buffer=new GridCellEditBuffer(table,new(table),1,"Name");int notifications=0;
+            buffer.PropertyChanged+=(_,_)=>notifications++;
+            table.Apply([new(1,"Name","External")]);buffer.Refresh();buffer.Refresh();
+            Check(notifications==1&&Equals(buffer.Value,"External"));
+        });
+        Test("native-buffer.noop-after-replacement-still-rejects",()=>{
+            var table=ValidationSuite.Fixture();using var buffer=new GridCellEditBuffer(table,new(table),1,"Name");
+            table.Remove([1]);table.Add(ValidationSuite.Fixture()[1]);
+            Check(!buffer.IsDirty&&!buffer.TryCommit()&&buffer.Error is not null);
+        });
         return new(results.AsReadOnly(), previous.Milliseconds+timer.Elapsed.TotalMilliseconds);
     }
 }

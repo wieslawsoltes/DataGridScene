@@ -15,7 +15,7 @@ namespace DataGridScene.Controls;
 /// on activation, sliders on release. Binding/recycling never writes data.</summary>
 public static class GridCellTemplates
 {
-    private sealed class State { public bool Binding; public string? NumberText; }
+    private sealed class State { public bool Binding; public string? NumberText; public SolidColorBrush? Background; }
     private static readonly ConditionalWeakTable<FrameworkElement, State> States = new();
     private static GridCellEditBuffer? Buffer(FrameworkElement element) =>
         !States.GetOrCreateValue(element).Binding && element.DataContext is GridCellEditBuffer { IsActive: true } buffer ? buffer : null;
@@ -33,13 +33,13 @@ public static class GridCellTemplates
     public static GridCellTemplate TextBox() => new(() =>
     {
         var control = new TextBox { MinWidth = 0, MinHeight = 0, Padding = new Thickness(6,2,6,2), FontSize = 12,
-            BorderThickness = new Thickness(0), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), CornerRadius = new CornerRadius(0) };
+            BorderThickness = new Thickness(0), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), CornerRadius = new CornerRadius(0), VerticalContentAlignment = VerticalAlignment.Center };
         control.TextChanged += (_, _) => { if (Buffer(control) is { } buffer && control.Text != Format(buffer)) buffer.Value = control.Text; };
         return control;
     }) { Bind = (element, buffer) => Bind(element, () => {
         var control = (TextBox)element; string text = Format(buffer);
         if (control.Text != text) control.Text = text; control.IsReadOnly = !buffer.CanEdit;
-    }) };
+    }), UpdateAppearance = UpdateEditorAppearance };
 
     public static GridCellTemplate CheckBox() => new(() =>
     {
@@ -58,7 +58,7 @@ public static class GridCellTemplates
         {
             var control = new ComboBox { ItemsSource = items, MinWidth = 0, MinHeight = 0, FontSize = 12,
                 Padding = new Thickness(6,2,4,2), HorizontalAlignment = HorizontalAlignment.Stretch,
-                BorderThickness = new Thickness(0), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), CornerRadius = new CornerRadius(0) };
+                BorderThickness = new Thickness(0), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), CornerRadius = new CornerRadius(0), VerticalContentAlignment = VerticalAlignment.Center };
             control.SelectionChanged += (_, _) => {
                 if (Buffer(control) is { } buffer && !Equals(control.SelectedItem, buffer.Value))
                 { buffer.Value = control.SelectedItem; buffer.TryCommit(); }
@@ -66,7 +66,7 @@ public static class GridCellTemplates
             return control;
         }) { Bind = (element, buffer) => Bind(element, () => {
             var control = (ComboBox)element; control.SelectedItem = buffer.Value; control.IsEnabled = buffer.CanEdit;
-        }), Unbind = (element, _) => ((ComboBox)element).IsDropDownOpen = false };
+        }), UpdateAppearance = UpdateEditorAppearance, Unbind = (element, _) => ((ComboBox)element).IsDropDownOpen = false };
     }
     public static GridCellTemplate Button(string caption, Action<GridCellEditBuffer> action)
     {
@@ -105,7 +105,8 @@ public static class GridCellTemplates
         return new(() =>
         {
             var control = new NumberBox { Minimum = minimum, Maximum = maximum, SmallChange = step, MinWidth = 0, MinHeight = 0,
-                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, ValidationMode = NumberBoxValidationMode.Disabled, FontSize = 12 };
+                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, ValidationMode = NumberBoxValidationMode.Disabled, FontSize = 12,
+                BorderThickness = new Thickness(0), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
             control.ValueChanged += (_, _) => {
                 if (Buffer(control) is { } buffer && !(double.IsNaN(control.Value) && buffer.Value is null) && !SameNumber(buffer.Value, control.Value, buffer.Culture))
                     buffer.Value = double.IsNaN(control.Value) ? null : control.Value;
@@ -121,7 +122,7 @@ public static class GridCellTemplates
                 States.GetOrCreateValue(control).NumberText = control.Text;
             }
             control.IsEnabled = buffer.CanEdit;
-        }), Flush = (element, buffer) => {
+        }), UpdateAppearance = UpdateEditorAppearance, Flush = (element, buffer) => {
             var control = (NumberBox)element;
             // Compare against the actual formatted binding, not the exact source value:
             // an untouched double-based display must not round or clamp stored decimals.
@@ -149,6 +150,19 @@ public static class GridCellTemplates
         control.IsEnabled = buffer.CanEdit;
     }), Unbind = (element, _) => ((CalendarDatePicker)element).IsCalendarOpen = false };
 
+    private static void UpdateEditorAppearance(FrameworkElement element, GridCellVisualState state)
+    {
+        if (element is not Control control) return;
+        // Native controls cover the canvas background while focused. Keep the same
+        // selection tint as the grid and let the host draw the focus outline above it.
+        var color = state.IsSelected
+            ? state.IsDark ? Windows.UI.Color.FromArgb(255, 40, 72, 100) : Windows.UI.Color.FromArgb(255, 204, 228, 247)
+            : Microsoft.UI.Colors.Transparent;
+        var binding = States.GetOrCreateValue(element);
+        binding.Background ??= new SolidColorBrush(color);
+        if (binding.Background.Color != color) binding.Background.Color = color;
+        if (!ReferenceEquals(control.Background, binding.Background)) control.Background = binding.Background;
+    }
     private static bool SameNumber(object? value, double number, CultureInfo culture)
     {
         if (value is null) return double.IsNaN(number);
