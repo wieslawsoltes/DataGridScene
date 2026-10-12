@@ -43,12 +43,12 @@ public sealed partial class GridControl
         var column = Table.Schema[address.Field];
         var selectors = editing ? _editSelectors : _displaySelectors;
         var fixedTemplates = editing ? _editCellTemplates : _cellTemplates;
-        if (!selectors.TryGetValue(address.Field, out var selector)) return fixedTemplates.GetValueOrDefault(address.Field);
+        if (!selectors.TryGetValue(address.Field, out var selector)) return fixedTemplates.GetValueOrDefault(address.Field) ?? DefaultNativeTemplate(column, editing);
         var key = (address, editing); bool readOnly = IsReadOnly || column.IsReadOnly;
         if (_templateChoices.TryGetValue(key, out var choice) && ReferenceEquals(choice.Record, record) && choice.Version == record.Version && choice.ReadOnly == readOnly)
             return choice.Template;
         TemplateSelectorCallCount++;
-        var result = selector(new(record, column, editing, readOnly)) ?? fixedTemplates.GetValueOrDefault(address.Field);
+        var result = selector(new(record, column, editing, readOnly)) ?? fixedTemplates.GetValueOrDefault(address.Field) ?? DefaultNativeTemplate(column, editing);
         _templateChoices[key] = new(record, record.Version, readOnly, result);
         return result;
     }
