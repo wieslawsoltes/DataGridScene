@@ -19,6 +19,7 @@ public static partial class BrowserBridge
         return JsonSerializer.Serialize(new
         {
             navigation = page.NavigationSnapshot(),
+            scrollbars = page.ScrollBarsSnapshot(),
             adaptiveTemplates = page.AdaptiveTemplatesEnabled,
             nativeCalendar = page.NativeCalendarSnapshot(),
             nativeCells = grid.GetNativeCells().Select(cell => new {
@@ -75,6 +76,7 @@ public static partial class BrowserBridge
             string Text(string key) => input.GetProperty(key).GetString() ?? "";
             switch (name)
             {
+                case "focus-scrollbar": (Text("axis") == "vertical" ? grid.VerticalScrollBar : grid.HorizontalScrollBar).Focus(FocusState.Keyboard); break;
                 case "value-filter": grid.SetColumnValues(Text("field"), JsonSerializer.Deserialize<ColumnValueFilter>(input.GetProperty("filter").GetRawText(), Json)); break;
                 case "template-selector-fault": page.SetTemplateSelectorFault(input.GetProperty("value").GetBoolean()); break;
                 case "native-fixture": page.ApplyNativeCellScenario(input.GetProperty("count").GetInt32()); break;
