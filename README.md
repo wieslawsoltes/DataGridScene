@@ -73,9 +73,15 @@ Select **Native controls** to use real TextBox, NumberBox, ComboBox and CheckBox
 
 Rows can choose different normal controls through `SetCellTemplateSelector` and `SetCellEditTemplateSelector`. The **Adaptive cell editors** command demonstrates this, with cached viewport choices and selection/focus decoration that does not rebind input values. See [template selectors and appearance](docs/template-selectors.md).
 
+## Native versions of every example
+
+Enable **Native cells** beside search to run every existing example with ordinary Uno cell content while preserving its data, layout, filtering, selection and history. Explicit Native controls and Adaptive cell editors templates remain available. Lightweight native display elements switch to native editors with F2 or a double-click; group/detail/header/summary chrome continues to use the shared Skia renderer.
+
+Native scrolling retains collapsed pooled controls under the same visual parent, reuses the outgoing viewport before trimming idle content, and updates render transforms without rewriting unchanged dimensions. See [the native-mode API, scrolling counters, lifecycle and limits](docs/native-scrolling.md). Scrollbars remain visible in both modes.
+
 ## Validation and deployment
 
-The shared C# suite currently contains **351 contracts** and runs on .NET and inside the actual published WebAssembly application. Browser validation includes **32 baseline, 16 band/workspace, 20 summary, 11 live-update/performance, 8 review, 13 checked-filter, 18 command-chrome/filter-panel, 22 native-cell, 14 row-aware-template and 4 short-window navigation checks**, using real pointer, keyboard, clipboard, native text input, HiDPI and touch interactions. The review, chrome and native-cell harnesses also run 33 individual real Uno control API contracts. The tests collect JSON reports, screenshots and Playwright traces; a test count alone is not a claim that every run passed. See the exact commit's Actions result.
+The shared C# suite contains **351 contracts** and runs on .NET and inside the actual published WebAssembly application. The complete browser inventory is **218 checks across 13 harnesses**, including every example in native cell mode, actual painted scrollbar visibility, native input, selection, layouts, summaries, live updates, HiDPI and touch. Four browser harnesses also execute **42 individual real Uno control API contracts**. Tests retain JSON reports, screenshots and Playwright traces. Consult the exact commit's Actions result for pass/fail status; inventory counts alone are not proof of success.
 
 CI builds the desktop target and all six packages. Only a successful **main** validation can trigger Pages deployment, and deployment uses that exact run's browser artifact. The deployment check verifies `build.json`, opens the public site in Chromium, edits/undoes a cell, opens the nested-band and group-summary samples, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input.
 

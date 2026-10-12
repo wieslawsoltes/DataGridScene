@@ -17,6 +17,8 @@ public sealed class GridCellTemplate
     public Action<FrameworkElement, GridCellEditBuffer>? Flush { get; init; }
     public Action<FrameworkElement, GridCellEditBuffer>? Unbind { get; init; }
     public Action<FrameworkElement>? Release { get; init; }
+    /// <summary>Non-editing content uses grid focus and double-click editing rather than swallowing native text input.</summary>
+    public bool IsDisplayOnly { get; init; }
     public bool CommitOnLostFocus { get; init; } = true;
     public GridCellTemplate(Func<FrameworkElement> create)
     { ArgumentNullException.ThrowIfNull(create); Create = create; }
