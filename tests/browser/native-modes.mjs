@@ -56,7 +56,11 @@ function bars(s) {
 }
 async function reset(native = true, count = 1000) {
   await page.keyboard.press('Escape'); await command('readonly', { value: false });
-  await command('reset', { count }); await command('bands', { value: false }); await mode(native);
+  await command('reset', { count }); await command('bands', { value: false });
+  if ((await snapshot()).rowHeight !== 28) {
+    await action('tab-themes'); await action('density-standard'); await action('tab-demo');
+  }
+  await mode(native);
 }
 async function test(name, run) {
   const start = Date.now();
@@ -68,6 +72,15 @@ try {
   await page.goto(process.env.APP_URL ?? 'http://127.0.0.1:4173/DataGridScene/', { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForFunction(() => globalThis.dataGridScene?.ready, undefined, { timeout: 180000 });
   await waitFor(s => s.ready && s.rendering.drawCount > 0, 60000);
+  await test('native-mode.reusable-control-api-contracts', async () => {
+    const report = await page.evaluate(async () => {
+      const assembly = await getDotnetRuntime(0).getAssemblyExports('DataGridScene.Demo');
+      return JSON.parse(assembly.DataGridScene.Demo.BrowserBridge.ValidateNativeModes());
+    });
+    await writeFile(path.join(out, 'native-mode-control-contracts.json'), JSON.stringify(report, null, 2));
+    assert.equal(report.passed, true, report.results.filter(r => !r.passed).map(r => r.name + ': ' + r.error).join('\n'));
+    assert.equal(report.results.length, 9);
+  });
   const scenarios = (await snapshot()).chrome.visibleExamples;
   for (const example of scenarios) await test('native-mode.example-' + example.replaceAll(' ', '-'), async () => {
     await mode(false); await action('scenario-' + example); await settle();
@@ -88,6 +101,14 @@ try {
     await mode(true); await action('scenario-Grouping'); assert.equal((await snapshot()).nativeScrolling.mode, 'NativeControls');
     await action('scenario-Performance'); const s = await snapshot(); assert.equal(s.nativeScrolling.mode, 'NativeControls');
     assert.equal(s.recordCount, 100000); assert.ok(s.nativeCells.length > 0); bars(s);
+  });
+  await test('native-mode.unchanged-defaults-survive-sample-reentry', async () => {
+    await reset(); await action('scenario-Overview'); const before = await snapshot();
+    await action('scenario-Overview'); const after = await snapshot();
+    assert.equal(after.nativeStats.createdCellControlCount, before.nativeStats.createdCellControlCount);
+    assert.equal(after.nativeScrolling.cellControlTreeAttachCount, before.nativeScrolling.cellControlTreeAttachCount);
+    assert.equal(after.nativeScrolling.cellControlTreeDetachCount, before.nativeScrolling.cellControlTreeDetachCount);
+    assert.deepEqual(model(after), model(before));
   });
   await test('native-mode.adaptive-sample-preserves-specific-controls', async () => {
     await action('scenario-Native controls'); await action('adaptive-templates'); const before = await snapshot();
@@ -119,6 +140,7 @@ try {
     await clickCell('Verified'); await command('focus-grid'); await page.keyboard.press('Control+Z');
     await waitFor(s => s.records[0].values.Verified === old);
     await command('filter', { field: 'Company', value: 'Alpine' });
+    await command('scroll', { x: 0, y: 0 });
     let s = await snapshot(); const header = s.frame.columns.find(c => c.field === 'Company');
     await page.mouse.click(s.origin.x + header.clipLeft + 20, s.origin.y + s.frame.headerTop + 12);
     s = await waitFor(s => s.query.sorts.some(sort => sort.field === 'Company'));
@@ -126,8 +148,8 @@ try {
     await mode(false); const after = await mode(true); assert.deepEqual(model(after), before);
   });
   await test('native-scroll.subrow-translation-does-not-resize-or-rebind', async () => {
-    await reset(); await command('scroll', { x: 0, y: 4 }); const before = await snapshot();
-    for (const y of [5, 6, 7, 8]) await command('scroll', { x: 0, y });
+    await reset(); await command('scroll', { x: 0, y: .1 }); const before = await snapshot();
+    for (const y of [.2, .3, .4, .5]) await command('scroll', { x: 0, y });
     const after = await snapshot();
     assert.equal(after.nativeStats.cellControlBindCount, before.nativeStats.cellControlBindCount);
     assert.equal(after.nativeScrolling.cellControlSizeWriteCount, before.nativeScrolling.cellControlSizeWriteCount);
@@ -176,6 +198,33 @@ try {
     await page.mouse.click(s.origin.x + c.clipBounds.x + 30, s.origin.y + c.clipBounds.y + 14);
     assert.equal((await snapshot()).focus.recordId, c.address.recordId);
     await page.screenshot({ path: path.join(out, 'native-frozen-scrollbars.png') });
+  });
+  await test('native-mode.cell-selection-drag-shares-canvas-behavior', async () => {
+    await reset(); await action('scenario-Cell selection');
+    const s = await snapshot(); const first = cell(s, 'Company'), last = cell(s, 'City', 10003);
+    assert.ok(first && last);
+    await page.mouse.move(s.origin.x + first.clipBounds.x + 25, s.origin.y + first.clipBounds.y + 14);
+    await page.mouse.down();
+    await page.mouse.move(s.origin.x + last.clipBounds.x + 25, s.origin.y + last.clipBounds.y + 14, { steps: 8 });
+    await page.mouse.up();
+    const selected = await waitFor(s => s.selectedCellCount === 6);
+    assert.equal(selected.selectionMode, 'Cells'); assert.equal(selected.focus.recordId, 10003);
+    assert.equal(selected.focus.field, 'City');
+  });
+  await test('native-scroll.real-thumb-drag-keeps-cell-input-aligned', async () => {
+    await reset(); const before = await snapshot(), bar = before.scrollbars.vertical;
+    const thumb = bar.parts.find(p => p.kind === 'thumb' && p.visible)?.bounds; assert.ok(thumb);
+    await page.mouse.move(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2); await page.mouse.down();
+    await page.mouse.move(thumb.x + thumb.width / 2, Math.min(bar.bounds.bottom - 22, thumb.y + bar.bounds.height * .2), { steps: 8 });
+    await page.mouse.up();
+    const s = await waitFor(s => s.verticalOffset > 0); bars(s);
+    assert.equal(s.verticalOffset, s.scrollbars.vertical.value);
+    assert.equal(s.performance.rowGeometryBuildCount, before.performance.rowGeometryBuildCount);
+    const c = s.nativeCells.find(c => c.address.field === 'Company' && c.clipBounds.height >= 27); assert.ok(c);
+    await page.mouse.click(s.origin.x + c.clipBounds.x + 25, s.origin.y + c.clipBounds.y + c.clipBounds.height / 2);
+    await waitFor(s => s.focus.recordId === c.address.recordId && s.focus.field === 'Company');
+    await page.keyboard.press('F2'); await waitFor(s => cell(s, 'Company', c.address.recordId)?.controlType === 'TextBox');
+    await page.waitForFunction(() => document.activeElement?.id === 'uno-input'); await page.keyboard.press('Escape');
   });
   await test('native-mode.theme-and-live-update-do-not-recreate-tree', async () => {
     await action('scenario-Live updates'); await mode(true); const before = await snapshot();

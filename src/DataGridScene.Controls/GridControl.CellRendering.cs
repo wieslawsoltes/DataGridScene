@@ -25,6 +25,7 @@ public sealed partial class GridControl
             if (_cellRenderingMode == value) return;
             if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
             _cellRenderingMode = value; _templateChoices.Clear(); _nativeFrame = null;
+            if (value == GridCellRenderingMode.Skia && _cellFields.Count == 0) ResetCellControls();
             if (Table is not null) { SynchronizeCellControls(); Redraw(); }
             Changed();
         }

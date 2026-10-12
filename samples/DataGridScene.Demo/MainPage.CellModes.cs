@@ -2,6 +2,7 @@ using DataGridScene.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
 namespace DataGridScene.Demo;
@@ -28,6 +29,9 @@ public sealed partial class MainPage
     public object NativeScrollingSnapshot() => new
     {
         mode = DataGrid.CellRenderingMode.ToString(),
+        focusedType = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot)?.GetType().Name,
+        focusedControl = XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is FrameworkElement element
+            ? AutomationProperties.GetAutomationId(element) : null,
         DataGrid.AttachedCellControlCount, DataGrid.CellControlTreeAttachCount, DataGrid.CellControlTreeDetachCount,
         DataGrid.CellControlSizeWriteCount, DataGrid.CellControlTranslationWriteCount,
         toggle = _nativeModeToggle.IsChecked

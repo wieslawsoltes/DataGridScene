@@ -39,7 +39,13 @@ public static class GridCellTemplates
     }) { Bind = (element, buffer) => Bind(element, () => {
         var control = (TextBox)element; string text = Format(buffer);
         if (control.Text != text) control.Text = text; control.IsReadOnly = !buffer.CanEdit;
-    }), UpdateAppearance = UpdateEditorAppearance };
+    }), Flush = (element, buffer) => {
+        // Uno can defer TextChanged until after a following Enter/pointer event.
+        // Read the actual native value at commit, not just the previous notification.
+        // Comparing its formatted binding preserves untouched nulls and exact values.
+        var control = (TextBox)element;
+        if (control.Text != Format(buffer)) buffer.Value = control.Text;
+    }, UpdateAppearance = UpdateEditorAppearance };
 
     public static GridCellTemplate CheckBox() => new(() =>
     {

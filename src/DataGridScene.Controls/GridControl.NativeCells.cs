@@ -106,6 +106,7 @@ public sealed partial class GridControl
     {
         RequireView();
         if (!CommitEdit()) throw new InvalidOperationException(LastError ?? "Finish editing first.");
+        if (_cellTemplates.Count == 0 && _editCellTemplates.Count == 0 && _displaySelectors.Count == 0 && _editSelectors.Count == 0) return;
         ResetCellControls(); _cellTemplates.Clear(); _editCellTemplates.Clear(); _displaySelectors.Clear(); _editSelectors.Clear(); _templateChoices.Clear(); _cellFields.Clear(); Renderer.IsNativeCell = null; Redraw();
     }
     public IReadOnlyList<NativeCellInfo> GetNativeCells() => _cellHosts.Values.Where(host => host.Buffer is not null && host.Placement is not null)
@@ -160,9 +161,11 @@ public sealed partial class GridControl
         host.Container.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, args) =>
         {
             if (_syncingNativeCells || host.Binding || host.Buffer is not { IsActive: true } buffer) return;
+            // Lightweight native displays use the very same capture/range-selection
+            // path as canvas cells. Interactive child editors keep their own input.
+            if (host.Template.IsDisplayOnly) { SurfacePressed(_surface, args); return; }
             if (!CommitOtherCellControls(buffer)) { args.Handled = true; return; }
             Selection.Select(View!, buffer.Address, Shift(args.KeyModifiers), Control(args.KeyModifiers), SelectionFields);
-            if (host.Template.IsDisplayOnly) Focus(FocusState.Pointer);
         }), true);
         host.Container.DoubleTapped += (_, args) =>
         {
