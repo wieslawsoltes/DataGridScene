@@ -30,6 +30,10 @@ public sealed partial class GridControl
             PrimaryButtonText = "Update", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.None,
             RequestedTheme = DarkTheme ? ElementTheme.Dark : ElementTheme.Light };
         bool saved = false;
+        // Reuse the same tested browser keyboard-owner handoff as native cell scopes.
+        // Observe the complete dialog, including its Update/Cancel buttons; desktop
+        // builds erase the partial call and carry no browser interop.
+        dialog.GettingFocus += (_, args) => PrepareNativeKeyboardHost(dialog, args);
         dialog.PrimaryButtonClick += (_, args) => { saved = form.TryCommit(); args.Cancel = !saved; };
         form.KeyDown += (_, args) =>
         {
@@ -54,7 +58,7 @@ public sealed partial class GridControl
         }
         finally
         {
-            StateChanged -= OwnerChanged; Unloaded -= OwnerUnloaded;
+            StateChanged -= OwnerChanged; Unloaded -= OwnerUnloaded; CancelNativeKeyboardHost(dialog);
             if (ReferenceEquals(ActiveRowEditForm, form)) { ActiveRowEditForm = null; _rowEditDialog = null; }
             if (!_disposed) Changed();
         }

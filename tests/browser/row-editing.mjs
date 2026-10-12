@@ -48,8 +48,9 @@ async function click(name) {
 async function text(field, value) {
   await click('field-' + field);
   await page.waitForFunction(() => document.activeElement?.id === 'uno-input');
-  await page.keyboard.press('Control+A'); await page.keyboard.insertText(value); await settle();
-  assert.equal((await state()).fields.find(f => f.field === field).text, value);
+  await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
+  if (value.length) await page.keyboard.insertText(value);
+  await waitFor(s => s.fields.find(f => f.field === field).text === value);
 }
 async function toolbar(name) {
   const s = await page.evaluate(() => dataGridScene.snapshot()), bounds = s.buttons[name]; assert.ok(bounds);
@@ -137,7 +138,19 @@ try {
     await open(); await click('null-Optional'); assert.equal((await save()).values[0].values.Optional, null);
   });
   await test('row-form.ctrl-enter-updates-and-escape-cancels', async () => {
-    await configure(); await open(); await text('Company', 'Keyboard update'); await page.keyboard.press('Control+Enter');
+    await configure(); await open(); await text('Company', 'Keyboard update');
+    // Real Tab and Shift+Tab must cross TextBox -> CheckBox -> ComboBox -> TextBox
+    // without committing the staged row or losing browser keyboard ownership.
+    for (const field of ['Quantity', 'Limit', 'Verified', 'Status', 'Amount']) {
+      await page.keyboard.press('Tab');
+      await page.waitForFunction(id => dataGridScene.snapshot().nativeScrolling.focusedControl === id, 'row-edit-' + field);
+    }
+    for (const field of ['Status', 'Verified', 'Limit', 'Quantity', 'Company']) {
+      await page.keyboard.press('Shift+Tab');
+      await page.waitForFunction(id => dataGridScene.snapshot().nativeScrolling.focusedControl === id, 'row-edit-' + field);
+    }
+    assert.equal((await state()).values[0].values.Company, 'Original');
+    await page.keyboard.press('Control+Enter');
     assert.equal((await waitFor(s => !s.open)).values[0].values.Company, 'Keyboard update');
     await open(); await text('Company', 'Keyboard cancel'); await page.keyboard.press('Escape');
     assert.equal((await waitFor(s => !s.open)).values[0].values.Company, 'Keyboard update');

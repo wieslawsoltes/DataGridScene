@@ -26,7 +26,9 @@ public static class RowEditControlChecks
             table.Add(new(1, new object?[] { "Original", null, 1.2345678901234567890123456789m, "Locked", null, "A" })); return table;
         }
         Test("editors-only-stage-until-update", () => {
-            var table = Table(); var history = new EditHistory(table); using var form = new RowEditForm(new(table, history, 1));
+            var table = Table(); var history = new EditHistory(table); var buffer = new GridRowEditBuffer(table, history, 1);
+            buffer.SetValue("Name", "Already staged"); using var form = new RowEditForm(buffer);
+            Check(((TextBox)form.Editors["Name"]).Text == "Already staged");
             ((TextBox)form.Editors["Name"]).Text = "Changed";
             Check(Equals(table[1][0], "Original") && !history.CanUndo && form.TryCommit());
             Check(Equals(table[1][0], "Changed") && history.Undo() && Equals(table[1][0], "Original"));
@@ -48,10 +50,13 @@ public static class RowEditControlChecks
             editable = true; form.RefreshReadOnly(); Check(form.TryCommit() && Equals(table[1][0], "Staged"));
         });
         Test("validation-retains-native-input", () => {
-            var table = Table(); using var form = new RowEditForm(new(table, new(table), 1));
+            var table = Table(); var buffer = new GridRowEditBuffer(table, new(table), 1); buffer.SetValue("Check", "invalid boolean");
+            using var form = new RowEditForm(buffer);
+            Check(form.Editors["Check"] is TextBox boolean && boolean.Text == "invalid boolean");
             ((TextBox)form.Editors["Name"]).Text = "";
-            Check(!form.TryCommit() && form.ValidationMessage is not null && ((TextBox)form.Editors["Name"]).Text == "");
-            ((TextBox)form.Editors["Name"]).Text = "Corrected"; Check(form.TryCommit());
+            Check(!form.TryCommit() && form.ValidationMessage is not null && buffer.Errors.Count == 2 && ((TextBox)form.Editors["Name"]).Text == "");
+            ((TextBox)form.Editors["Name"]).Text = "Corrected"; ((TextBox)form.Editors["Check"]).Text = "true";
+            Check(form.TryCommit() && table[1][4] is true);
         });
         Test("dispose-cancels-without-history", () => {
             var table = Table(); var history = new EditHistory(table); var form = new RowEditForm(new(table, history, 1));
