@@ -12,6 +12,7 @@ public sealed partial class MainPage
 {
     private void InitializeNativeCellUI()
     {
+        InitializeNativeModeUI();
         if (_navigation.Child is not ScrollViewer { Content: StackPanel navigation }) return;
         var button = Button("scenario-Native controls", "Native controls", ApplyNativeCellScenario);
         button.Height = button.MinHeight = button.MaxHeight = 40;
