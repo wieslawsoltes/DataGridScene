@@ -18,9 +18,11 @@ Clipboard tests first write an unrelated sentinel, issue Ctrl+C, and poll until 
 
 `tests/browser/native-cells.mjs` adds 22 native-cell checks and runs 11 additional real Uno API contracts. The pre-selector inventory is 140 browser checks and 33 embedded control API contracts. Native tests cover actual editors, validation, undo, actions, popup input, recycled identities, 100,000 records and bounded rebinding.
 
-`tests/browser/template-selectors.mjs` adds 14 row-aware-template, native appearance and bounded-work checks, for a total of 154 browser checks. It verifies per-record choices, null fallbacks, dirty-editor retention, callback failure, 100,000-row cache bounds and no rebinding during repeated no-op commands.
+`tests/browser/template-selectors.mjs` adds 14 row-aware-template, native appearance and bounded-work checks, for a total of 154 browser checks before the navigation suite. It verifies per-record choices, null fallbacks, dirty-editor retention, callback failure, 100,000-row cache bounds and no rebinding during repeated no-op commands.
 
-`npm run test:browser` runs all nine harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
+`tests/browser/navigation-viewport.mjs` adds four regressions at 960- and 720-pixel window heights. It scrolls the real native sidebar with wheel input before clicking offscreen commands, then validates live updates and native editing/undo. The full inventory is 158 browser checks.
+
+`npm run test:browser` runs all ten harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
 
 ## CI artifacts
 
@@ -37,7 +39,7 @@ The desktop CI job builds the shared Uno desktop target. It does not currently r
 
 ## Pages
 
-After successful main validation, Publish Pages downloads that run's browser artifact rather than rebuilding different sources. Its deployment verification compares the public `build.json` commit, starts the actual WASM app in Chromium, performs a native edit and undo, opens the nested-band and group-summary scenarios, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input. The complete 14-scenario selector browser suite then runs against the public URL. Verification reports and screenshots are retained as `deployed-site-verification`.
+After successful main validation, Publish Pages downloads that run's browser artifact rather than rebuilding different sources. Its deployment verification compares the public `build.json` commit, starts the actual WASM app in Chromium, performs a native edit and undo, opens the nested-band and group-summary scenarios, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input. The complete 14-scenario selector browser suite then runs against the public URL. Navigation commands are clicked only after their centers lie within the actual sidebar viewport; failures retain the final application snapshot and screenshot. Verification reports and screenshots are retained as `deployed-site-verification`.
 
 A failed deployment verification does not undo publication; it marks the deployment workflow unsuccessful and must be investigated before claiming the public site is verified.
 

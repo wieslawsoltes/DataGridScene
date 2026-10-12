@@ -18,6 +18,7 @@ public static partial class BrowserBridge
         var page = Page; var grid = page.DataGrid; var view = grid.View; var frame = grid.Frame; var origin = grid.SurfaceOrigin();
         return JsonSerializer.Serialize(new
         {
+            navigation = page.NavigationSnapshot(),
             adaptiveTemplates = page.AdaptiveTemplatesEnabled,
             nativeCalendar = page.NativeCalendarSnapshot(),
             nativeCells = grid.GetNativeCells().Select(cell => new {
