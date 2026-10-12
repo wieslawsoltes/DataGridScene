@@ -63,6 +63,10 @@ values or application input; strict CSP deployments that disallow evaluation req
 host-side integration instead. This compatibility path is tied to the tested Uno Skia
 browser input lifecycle and should be reviewed when that dependency changes.
 
+The integrated [row edit dialog](row-editing.md) observes the same handoff at its own
+GettingFocus boundary, including Update/Cancel buttons, and cancels it when the dialog
+closes. It does not install a second global keyboard handler or alter native Tab traversal.
+
 ## Boundaries
 
 This addresses the **currently realized native controls**. It does not make canvas-only
@@ -84,11 +88,10 @@ fresh accessibility entry, external DOM focus and retained-tree work counters.
 Diagnostics only read existing cells/focus/counters; they do not search for or set the
 next focus candidate, attach input handlers, force layout or realize controls.
 
-The complete inventory is 359 shared managed/geometry contracts (351 baseline plus
-eight new), 233 browser checks across fourteen harnesses, and 42 embedded individual
-Uno API contracts. Counts are inventory, not evidence that a particular run passed.
-Consult the exact commit's Actions reports. Browser CI uses ANGLE/SwiftShader and does
-not establish hardware GPU throughput or end-to-end input latency.
+The complete suite inventory is maintained in [validation](validation.md). Counts are
+inventory, not evidence that a particular run passed. Consult the exact commit's Actions
+reports. Browser CI uses ANGLE/SwiftShader and does not establish hardware GPU throughput
+or end-to-end input latency.
 
 References: [UIElement.TabIndex](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.uielement.tabindex),
 [UIElement.TabFocusNavigation](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.uielement.tabfocusnavigation),

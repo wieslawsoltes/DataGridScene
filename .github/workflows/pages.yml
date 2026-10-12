@@ -16,7 +16,7 @@ jobs:
   deploy:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -49,6 +49,12 @@ jobs:
           APP_URL: ${{ steps.deployment.outputs.page_url }}
           EXPECTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
         run: node scripts/verify-deployment.mjs
+      - name: Verify transactional row forms on public Pages
+        env:
+          APP_URL: ${{ steps.deployment.outputs.page_url }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          BROWSER_RESULTS: artifacts/deployed-verification
+        run: node tests/browser/row-editing.mjs
       - name: Verify native cell Tab order on public Pages
         env:
           APP_URL: ${{ steps.deployment.outputs.page_url }}
