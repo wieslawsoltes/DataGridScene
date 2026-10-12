@@ -1,79 +1,112 @@
 # Validation
 
-## Reproducible layers
+## Shared managed and geometry contracts
 
-The executable `tests/DataGridScene.Tests` runs `NativeCellValidationSuite`, which includes the baseline and selection suites. Its 351 contracts cover schema, data shaping, editing, clipboard/export, paging, variable-height indexing, bands and workspace state. It writes `artifacts/core-validation.json` and exits nonzero on any failed assertion.
+`tests/DataGridScene.Tests` runs the 351-contract `NativeCellValidationSuite` and eight
+`NativeTabOrderValidation` contracts. The combined 359-contract report is written to
+`artifacts/core-validation.json`; any failed assertion causes a nonzero exit.
 
-The actual Uno WebAssembly application exposes the same suite through a sample-only diagnostic bridge. `tests/browser/run.mjs` invokes it in the browser runtime and also performs 32 interaction checks. `tests/browser/summaries.mjs` performs 20 summary, context-menu and staged-editor interaction checks. `tests/browser/workspace.mjs` performs 16 additional band/workspace checks. Real browser pointer, keyboard, clipboard and native text input are used; diagnostic commands supply fixtures/configuration and snapshots, not synthetic success results.
+The same contracts run inside the actual published Uno WebAssembly application: the
+baseline browser harness invokes the 351-contract suite and the native Tab-order harness
+invokes the eight additional geometry contracts. These exercise schema, shaping,
+selection, version-checked edits, clipboard/export, paging, row-height indexes, bands,
+workspace state, native buffers and viewport-local focus ranks.
 
-Clipboard tests first write an unrelated sentinel, issue Ctrl+C, and poll until the browser clipboard actually changes. This avoids accepting pasted input or a prior selection's clipboard contents while an asynchronous copy is still pending.
+## Real browser interactions
 
-`tests/browser/performance.mjs` adds 11 live-update and bounded-work checks, including real cell edits, start/stop controls, wheel scrolling and a batch of 1,000 edits.
+`npm run test:browser` runs all fourteen harnesses against the actual WASM sample.
+Diagnostic commands supply fixtures/configuration and read snapshots; user interactions
+use real pointer, keyboard, clipboard and native text input.
 
-`tests/browser/review.mjs` adds eight checks for cached frames, edit preservation, read-only transitions and real control APIs. Its control-API check invokes ten individual Uno contracts; these instantiate the controls on the UI thread rather than simulating their behavior. The shared 351-contract suite also includes raster stack restoration and 22 bounded page-scheduling checks.
+| Harness | Browser checks | Additional embedded contracts / focus |
+|---|---:|---|
+| `native-tab-order.mjs` | 15 | Eight shared geometry contracts; actual Tab/Shift+Tab, recycled hosts, composite controls, browser keyboard handoff, accessibility entry and external focus. |
+| `native-cells.mjs` | 24 | Eleven real Uno API contracts; text, number, choice, date, action and slider controls; validation, identity and undo. |
+| `native-modes.mjs` | 29 | Nine real Uno API contracts; every example in both modes, preserved state, native input and retained-tree scrolling. |
+| `native-input-regressions.mjs` | 4 | Recycled double-clicks, outstanding validation messages and native display context menus. |
+| `scrollbars.mjs` | 25 | Actual painted thumb contrast, thirteen examples, drag/arrow/page/keyboard input, validation and HiDPI touch. |
+| `navigation-viewport.mjs` | 4 | Actual sidebar wheel input at 960- and 720-pixel window heights. |
+| `template-selectors.mjs` | 14 | Row-aware choices, dirty-editor retention, null fallbacks, callback errors, appearance-only updates and cache bounds. |
+| `run.mjs` | 32 | The 351 shared contracts in WASM; baseline grid, clipboard, exports, HiDPI and touch. |
+| `workspace.mjs` | 16 | Bands, selection, expansion, saved geometry, malformed-state rejection and two-way options. |
+| `summaries.mjs` | 20 | Nested group footers, aligned/multiline values, context sorting and staged native summary editor. |
+| `performance.mjs` | 11 | Live updates, 100,000 records, value-only updates and batched edits. |
+| `review.mjs` | 8 | Ten real Uno API contracts; cached frames, exact/null values and read-only transitions. |
+| `value-filters.mjs` | 13 | Checked inclusion/exclusion, search, persistence and virtualized 100,000-record distinct-value filtering. |
+| `chrome.mjs` | 18 | Twelve real Uno API contracts; command ribbon, themes, full-width view and filter-panel interactions. |
 
-`tests/browser/value-filters.mjs` adds thirteen checked-filter scenarios, including native ListView virtualization on a 100,000-record field, search across the value limit, checked selection, exclusion, condition entry and persistence.
+The inventory is **233 browser checks**, **359 shared managed/geometry contracts**, and
+**42 individual real Uno control API contracts**. Embedded invocations are included in
+the browser-check count; they are not additional independent browser scenarios. Counts
+alone do not show whether any particular run passed.
 
-`tests/browser/chrome.mjs` adds 18 command-ribbon/filter-panel checks and runs 12 additional real Uno API contracts. The chrome and previous browser suites contain 118 checks; their two embedded control suites contain 22 individual API contracts. It captures light/dark, full-width and filter-panel screenshots.
-
-`tests/browser/native-cells.mjs` adds 24 native-cell checks and runs 11 additional real Uno API contracts. The pre-selector inventory is 142 browser checks and 33 embedded control API contracts. Native tests cover actual editors, validation, undo, actions, popup input, recycled identities, 100,000 records and bounded rebinding.
-
-`tests/browser/template-selectors.mjs` adds 14 row-aware-template, native appearance and bounded-work checks, for a total of 156 browser checks before the navigation suite. It verifies per-record choices, null fallbacks, dirty-editor retention, callback failure, 100,000-row cache bounds and no rebinding during repeated no-op commands.
-
-`tests/browser/navigation-viewport.mjs` adds four regressions at 960- and 720-pixel window heights. It scrolls the real native sidebar with wheel input before clicking offscreen commands, then validates live updates and native editing/undo. This brings the pre-scrollbar inventory to 160 browser checks.
-
-`tests/browser/scrollbars.mjs` adds 25 checks for persistent native rails across all 13 examples, actual thumb contrast and template parts, dragging, arrow/page/keyboard input, invalid-edit rejection, and HiDPI touch. The suite checks painted pixels, not only scrollbar properties.
-
-`tests/browser/native-modes.mjs` adds 29 checks covering native equivalents of every example, preserved data and layout when switching modes, pointer/keyboard editing, validation, drag selection, retained-tree scrolling, 100,000-record operation counts and pool cleanup. Its embedded contract invocation runs nine additional real Uno API checks.
-
-`tests/browser/native-input-regressions.mjs` adds four checks for recycled double-click editing, persistent validation after unrelated focus changes, native display context menus and unhandled exceptions.
-
-The complete inventory is **218 browser checks across 13 harnesses**, plus **42 individual Uno API contracts** embedded in four of those harnesses. These counts describe the tests, not a claim that an unfinished run passed.
-
-`npm run test:browser` runs all thirteen harnesses. The static test server uses the same `/DataGridScene/` base path without cross-origin-isolation headers. HiDPI and touch contexts are included in the baseline harness.
+The static server uses the same `/DataGridScene/` base path as Pages without
+cross-origin-isolation headers. Reports, screenshots, exports and Playwright traces
+are retained. Tests verify identity/version invariants and rejected operations, not
+only happy paths. They do not compare a licensed DevExpress build side by side.
 
 ## CI artifacts
 
-The Validate workflow produces:
+- `core-validation-and-packages`: source archive, managed JSON report, non-gating
+  performance measurements, Linux raster dependencies and five independent packages.
+- `browser-validation`: WASM and interaction reports, screenshots, exports and traces.
+- `browser-application`: static application including `build.json` with the producing commit.
+- `uno-control-package`: the reusable Uno control package for desktop/browser targets.
 
-- `core-validation-and-packages`: source archive, managed JSON report and five independent NuGet packages.
-- `browser-validation`: the WASM conformance report, baseline interaction report, workspace interaction report, screenshots, exports and traces.
-- `browser-application`: the published static application, including `build.json` with the exact producing commit.
-- `uno-control-package`: the reusable Uno control NuGet package.
+Consult the exact head or merge commit's Actions run. Source archives and successful
+compiles are not evidence that browser interactions passed. The desktop job builds the
+shared Uno desktop target; it is not a full Windows/macOS/Linux native UI runtime matrix.
 
-Consult the exact head/merge commit's Actions run. A generated source archive or successful compile is not evidence that the browser tests passed.
+## Deployment verification
 
-The desktop CI job builds the shared Uno desktop target. It does not currently run a complete Windows/macOS/Linux native UI test matrix.
+Only successful main validation triggers Publish Pages. The deployment downloads the
+exact successful run's browser artifact instead of rebuilding different sources.
+Verification compares the public `build.json` commit and exercises actual editing/undo,
+bands, group summaries, the summary editor, live updates and checked filters.
 
-## Pages
+The public URL also runs the complete native Tab-order, template-selector, native-mode,
+native-cell, native-input and painted-scrollbar harnesses. Navigation commands are
+clicked only after their centers lie inside the actual sidebar viewport. Reports and
+screenshots are retained in `deployed-site-verification`.
 
-After successful main validation, Publish Pages downloads that run's browser artifact rather than rebuilding different sources. Its deployment verification compares the public `build.json` commit, starts the actual WASM app in Chromium, performs a native edit and undo, opens the nested-band and group-summary scenarios, opens/cancels the summary editor, verifies a display-only update on 100,000 rows without reshaping, and applies a checked column filter using real pointer input. The complete 14-scenario selector suite and 29-scenario native-mode suite then run against the public URL, followed by the 24-scenario native-cell, native-input and 25-scenario painted-scrollbar suites. Navigation commands are clicked only after their centers lie within the actual sidebar viewport; failures retain the final application snapshot and screenshot. Verification reports and screenshots are retained as `deployed-site-verification`.
+Failed verification does not undo publication. It marks the deployment unsuccessful
+and must be investigated before claiming the public app is verified.
 
-A failed deployment verification does not undo publication; it marks the deployment workflow unsuccessful and must be investigated before claiming the public site is verified.
+## Readiness and diagnostic integrity
 
-## Offline compiler check
+Clipboard tests write an unrelated sentinel, issue Ctrl+C, then wait for the clipboard
+to change; a previous clipboard value cannot accidentally satisfy the check.
 
-`scripts/validate-offline.py` can use the compiler/runtime kit produced by the repository's Offline validation kit workflow. It directly compiles the managed libraries, Uno controls and contract executable with the real .NET compiler and runs the tests. It is useful in disconnected environments, but does not run MSBuild targets, pack NuGet packages, compile the sample's generated platform code, or validate a browser. Full CI remains required.
+ComboBox tests wait for the actual open popup, realized items and focused item between
+keys. Browser pointer completion does not guarantee Uno has processed queued focus and
+popup layout. Fresh-start scrollbar tests likewise wait for real, nonzero template
+parts, then inspect screenshot-pixel contrast without hover input or forced layout.
 
-See the [review findings and additional benchmark comparison](review.md) for current limits, paging contracts and measured small-selection clipboard workloads.
+Tab-order diagnostics inspect existing hosts and focus. They never assign TabIndex,
+move focus, search for the next candidate, subscribe to input events, invoke templates
+or materialize offscreen cells. The composite-cell fixture explicitly creates real
+child controls with reversed TabIndex values and an optional disabled child; actual
+browser keys must honor those values. Browser-handoff checks retain the accessibility
+entry and test both native text input and external DOM focus ownership.
 
-## Performance measurements
+## Offline compiler and performance checks
 
-`dotnet run --project tests/DataGridScene.Tests -c Release -- --benchmark` records medians and allocations from five warmed rounds. Timing is reported, not used as a machine-dependent pass threshold. CI retains `performance-benchmarks.json` with the core artifacts. The [performance document](performance.md) includes a same-harness baseline comparison and explains exactly what is measured.
+`scripts/validate-offline.py` uses the repository's Offline validation kit to directly
+compile managed libraries, Uno controls and the contract executable with the real .NET
+compiler. It does not run MSBuild, pack packages, compile generated platform sample code,
+or validate a browser. Full CI remains required.
 
-Correctness gates instead assert retained object identities, exact refresh counts, bounded index storage, randomized agreement with complete refreshes, and the unchanged aggregate results after undo. Browser diagnostics read counters without repairing state.
+`dotnet run --project tests/DataGridScene.Tests -c Release -- --benchmark` records warmed
+median times and allocations. Timings are reported, not used as machine-dependent pass
+thresholds. Correctness gates instead check retained identities, refresh counts, bounded
+storage, randomized agreement with full refreshes and results after undo.
 
-## Performance and visual limits
+Stress checks include 100,000 materialized records, one million indexed row heights,
+10,000 indexed columns/bands and compressed selections. Native scrolling checks count
+control creation, reparenting, binding, dimension, translation and tab-rank writes.
+These are bounded-work checks, not universal throughput guarantees. See
+[performance](performance.md), [review findings](review.md), and [native Tab order](native-tab-order.md).
 
-Stress assertions cover 100,000 materialized records, one million indexed row heights, 10,000 indexed columns/bands and compressed 100,000-row selections. These are correctness/bounded-visual-work checks, not universal throughput guarantees.
-
-Chromium is launched with ANGLE/SwiftShader in hosted CI. This exercises graphics API paths on a software implementation. Hardware GPU throughput, power, full frame presentation, input latency, complex text fallback and pixel-identical DevExpress appearance remain unverified.
-
-## Native popup readiness
-
-The ComboBox tests wait for the actual open popup, realized native items and focused
-item before sending navigation/commit keys. Browser pointer completion does not imply
-that Uno has already processed its queued focus and popup layout. Read-only diagnostics
-inspect existing controls; they never focus, open or realize them. Tests retain model
-and undo assertions and additionally check Escape and pointer selection on recycled
-ComboBox cells. This replaces a timing assumption, not the tested behavior.
+Hosted Chromium uses ANGLE/SwiftShader. Hardware GPU throughput, power, presentation
+latency, complete multilingual fallback, all DPI/driver cases and pixel-identical
+DevExpress appearance remain unverified.
