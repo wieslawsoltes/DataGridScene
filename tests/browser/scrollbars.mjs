@@ -30,6 +30,14 @@ async function open(p = page) {
   await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await p.waitForFunction(() => globalThis.dataGridScene?.ready, undefined, { timeout: 180000 });
   await waitFor(s => s.ready && s.frame && s.rendering.drawCount > 0, 60000, p);
+  // The canvas can render before native scrollbar templates finish their first
+  // layout/visual-state transition. Observe their actual parts without sending
+  // hover/touch input or forcing ApplyTemplate/UpdateLayout from diagnostics.
+  await waitFor(s => ['vertical', 'horizontal'].every(axis => {
+    const bar = s.scrollbars[axis];
+    return bar.visible && bar.indicator === 'MouseIndicator' &&
+      (!bar.maximum || bar.parts.filter(part => part.kind === 'thumb' && part.visible).length === 1);
+  }), 15000, p);
 }
 function visibleThumb(bar) {
   assert.ok(bar.visible, `${bar.axis} rail must be visible`);
@@ -61,16 +69,16 @@ async function reset() {
   await command('reset', { count: 1000 }); await command('bands', { value: false }); await command('theme', { dark: false });
   await page.mouse.move(0, 0); await settle();
 }
-async function thumbContrast(axis) {
-  const bar = (await snapshot()).scrollbars[axis], thumb = visibleThumb(bar); assert.ok(thumb);
+async function thumbContrast(axis, p = page) {
+  const bar = (await snapshot(p)).scrollbars[axis], thumb = visibleThumb(bar); assert.ok(thumb);
   // Use actual screenshot pixels, not Visibility alone: a transparent template can
   // retain clickable thumb geometry while painting nothing (the reported defect).
   const vertical = axis === 'vertical';
   const clip = vertical
     ? { x: bar.bounds.x + 1, y: Math.max(bar.bounds.y + 20, thumb.y - 3), width: bar.bounds.width - 2, height: Math.min(thumb.height + 16, bar.bounds.height - 40) }
     : { x: Math.max(bar.bounds.x + 20, thumb.x - 3), y: bar.bounds.y + 1, width: Math.min(thumb.width + 16, bar.bounds.width - 40), height: bar.bounds.height - 2 };
-  const png = await page.screenshot({ clip });
-  const contrast = await page.evaluate(async base64 => {
+  const png = await p.screenshot({ clip });
+  const contrast = await p.evaluate(async base64 => {
     const image = new Image(); image.src = 'data:image/png;base64,' + base64; await image.decode();
     const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
     const ctx = canvas.getContext('2d'); ctx.drawImage(image, 0, 0);
@@ -172,6 +180,7 @@ try {
     try {
       const p = await touch.newPage(); await open(p); const s = await snapshot(p);
       visibleThumb(s.scrollbars.vertical); visibleThumb(s.scrollbars.horizontal);
+      await thumbContrast('vertical', p); await thumbContrast('horizontal', p);
       const arrow = s.scrollbars.vertical.parts.find(part => part.visible && /SmallIncrease/i.test(part.name)); assert.ok(arrow);
       await p.touchscreen.tap(arrow.bounds.x + arrow.bounds.width / 2, arrow.bounds.y + arrow.bounds.height / 2);
       await waitFor(s => s.verticalOffset > 0, 10000, p);
