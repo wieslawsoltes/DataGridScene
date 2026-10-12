@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { clickNavigationAction } from '../tests/browser/navigation-actions.mjs';
 
 const appUrl = process.env.APP_URL;
 const expectedCommit = process.env.EXPECTED_COMMIT;
@@ -11,7 +12,7 @@ assert.equal(url.protocol, 'https:', 'Deployment verification requires HTTPS');
 const output = path.resolve('artifacts/deployed-verification');
 await mkdir(output, { recursive: true });
 const report = { url: url.href, expectedCommit, passed: false, checks: [], pageErrors: [] };
-let browser;
+let browser, page;
 try {
   // Pages publication and CDN visibility need not become observable simultaneously.
   // Poll the actual public build marker; do not accept an earlier deployment.
@@ -30,7 +31,7 @@ try {
   report.checks.push('public-build-commit');
   browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   report.browser = browser.version();
-  const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+  page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   page.on('pageerror', error => report.pageErrors.push(String(error)));
   await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForFunction(() => globalThis.dataGridScene?.ready, undefined, { timeout: 180000 });
@@ -63,7 +64,7 @@ try {
   state = await page.evaluate(() => dataGridScene.snapshot());
   const button = state.buttons['scenario-Nested bands'];
   assert.ok(button, 'Nested band example must be deployed');
-  await page.mouse.click(button.x + button.width / 2, button.y + button.height / 2);
+  await clickNavigationAction(page, 'scenario-Nested bands');
   await page.waitForFunction(() => dataGridScene.snapshot().frame.bandLevels === 2);
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.screenshot({ path: path.join(output, 'deployed-nested-bands.png') });
@@ -71,7 +72,7 @@ try {
   state = await page.evaluate(() => dataGridScene.snapshot());
   const summaries = state.buttons['scenario-Group summaries'];
   assert.ok(summaries, 'Group summary example must be deployed');
-  await page.mouse.click(summaries.x + summaries.width / 2, summaries.y + summaries.height / 2);
+  await clickNavigationAction(page, 'scenario-Group summaries');
   await page.waitForFunction(() => {
     const state = dataGridScene.snapshot();
     return state.scenario === 'Group summaries' && state.groupFooterCount === 18 && state.rendering.summaryCellsDrawn > 3;
@@ -81,7 +82,7 @@ try {
   report.checks.push('public-group-summaries-and-footers');
   state = await page.evaluate(() => dataGridScene.snapshot());
   const configure = state.buttons.summaries;
-  await page.mouse.click(configure.x + configure.width / 2, configure.y + configure.height / 2);
+  await clickNavigationAction(page, 'summaries');
   await page.waitForFunction(() => dataGridScene.snapshot().summaryEditor?.actions['summary-apply']);
   await page.screenshot({ path: path.join(output, 'deployed-summary-editor.png') });
   await page.keyboard.press('Escape');
@@ -90,14 +91,14 @@ try {
   state = await page.evaluate(() => dataGridScene.snapshot());
   const live = state.buttons['scenario-Live updates'];
   assert.ok(live, 'Live update example must be deployed');
-  await page.mouse.click(live.x + live.width / 2, live.y + live.height / 2);
+  await clickNavigationAction(page, 'scenario-Live updates');
   await page.waitForFunction(() => {
     const state = dataGridScene.snapshot();
     return state.scenario === 'Live updates' && state.recordCount === 100000 && state.performance.heightMode === 'Uniform';
   });
   const before = await page.evaluate(() => dataGridScene.snapshot());
   const once = before.buttons['live-once'];
-  await page.mouse.click(once.x + once.width / 2, once.y + once.height / 2);
+  await clickNavigationAction(page, 'live-once');
   await page.waitForFunction(value => dataGridScene.snapshot().performance.valueUpdateCount > value, before.performance.valueUpdateCount);
   const after = await page.evaluate(() => dataGridScene.snapshot());
   assert.equal(after.performance.refreshCount, before.performance.refreshCount);
@@ -159,7 +160,7 @@ try {
   await clickChrome('tab-demo');
   await page.screenshot({ path: path.join(output, 'deployed-office-filter-panel.png') });
   report.checks.push('public-ribbon-and-whole-shell-themes');
-  await clickChrome('scenario-Native controls');
+  await clickNavigationAction(page, 'scenario-Native controls');
   await page.waitForFunction(() => dataGridScene.snapshot().nativeCells.some(cell => cell.controlType === 'TextBox'));
   state = await page.evaluate(() => dataGridScene.snapshot());
   const nativeCompany = state.nativeCells.find(cell => cell.address.recordId === 10001 && cell.address.field === 'Company');
@@ -187,6 +188,10 @@ try {
   report.passed = true;
 } catch (error) {
   report.error = String(error.stack ?? error);
+  if (page) {
+    await page.screenshot({ path: path.join(output, 'deployment-failure.png') }).catch(() => {});
+    report.lastState = await page.evaluate(() => globalThis.dataGridScene?.snapshot()).catch(() => null);
+  }
   process.exitCode = 1;
 } finally {
   await browser?.close();
