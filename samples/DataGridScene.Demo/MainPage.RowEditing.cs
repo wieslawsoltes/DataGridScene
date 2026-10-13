@@ -23,7 +23,18 @@ public sealed partial class MainPage
             navigation.Children.Insert(navigation.Children.IndexOf(anchor) + offset, button);
         }
         Add("edit-row", "Edit selected row…", ShowRowEditor, 1);
-        Add("edit-row-layout", "Row form layout…", () => ShowRowEditor(CreateRowLayoutOptions()), 2);
+        Add("edit-row-layout", "Row form layout…", () => ShowConfiguredRowEditor(false), 2);
+        Add("edit-row-custom", "Custom row editors…", () => ShowConfiguredRowEditor(true), 3);
+    }
+    private void ShowConfiguredRowEditor(bool custom)
+    {
+        try
+        {
+            if (DataGrid.Table is null) { SetMessage("Select an existing row to edit."); return; }
+            if (DataGrid.ActiveRowEditForm is not null) return;
+            ShowRowEditor(custom ? CreateCustomRowEditorOptions() : CreateRowLayoutOptions());
+        }
+        catch (Exception error) { SetMessage(error.Message); }
     }
     private RowEditFormOptions CreateRowLayoutOptions()
     {
