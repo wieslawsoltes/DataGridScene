@@ -61,3 +61,19 @@ test('Pages reruns select only their own artifact without deleting earlier evide
   assert.match(workflow, /github.event.workflow_run.conclusion == 'success'/);
   assert.equal(actionInput('actions/download-artifact', 'run-id'), '${{ github.event.workflow_run.id }}');
 });
+
+test('aggregate browser gate runs after failure but remains cancellable when superseded', async () => {
+  const workflow = await readFile(new URL('../../.github/workflows/validate.yml', import.meta.url), 'utf8');
+  const remainder = workflow.split('\n  browser:\n')[1];
+  assert.ok(remainder, 'Missing aggregate browser gate');
+  const gate = remainder.split(/\n  [a-z][\w-]*:\n/, 1)[0];
+  assert.match(gate, /^    if: \$\{\{ !cancelled\(\) \}\}$/m);
+  assert.match(gate, /^    needs: \[browser-build, browser-tests\]$/m);
+  assert.match(gate, /^    timeout-minutes: 10$/m);
+  assert.ok(gate.includes('test "$BUILD_RESULT" = success'));
+  assert.ok(gate.includes('test "$TEST_RESULT" = success'));
+  assert.ok(gate.includes('for group in forms native viewport features; do'));
+  assert.ok(gate.includes('test -f "artifacts/browser-validation/runner-$group.json"'));
+  assert.match(workflow, /cancel-in-progress: true/);
+  assert.match(workflow, /fail-fast: false/);
+});

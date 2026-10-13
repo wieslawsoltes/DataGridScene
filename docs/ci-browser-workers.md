@@ -4,15 +4,19 @@ The browser build is compiled once. Four independent Actions workers download th
 
 `scripts/run-browser-suites.mjs` partitions all nineteen commands (eighteen interaction harnesses plus deployment smoke) into four disjoint groups: forms, native, viewport and features. Within a worker, each suite is a separate Node process with its own browser; suites run sequentially so their loopback server port cannot collide. Different workers run on different hosted machines, avoiding artificial concurrent SwiftShader load in a single browser/performance test.
 
-The registry test checks that all nineteen expected harnesses occur exactly once. It also checks unknown group rejection, owned plan copies, error/signal/timeout propagation, execution of later suites after a failure, and source/artifact provenance. Its seven Node tests are runner/deployment contracts, not additional browser interactions or Uno API contracts.
+The registry test checks that all nineteen expected harnesses occur exactly once. It also checks unknown group rejection, owned plan copies, error/signal/timeout propagation, execution of later suites after a failure, and source/artifact provenance. Its eight Node tests are runner/deployment configuration contracts, not additional browser interactions or Uno API contracts.
 
-## Failure semantics
+## Failure and cancellation semantics
 
 A failed suite is recorded once and is never retried by this runner. Independent later suites still execute. The matrix uses `fail-fast: false`; a failing worker does not cancel the others. Every worker returns a nonzero exit for any failure, process error or timeout. Ten-minute per-suite process deadlines prevent indefinite hangs; normal suite-specific input readiness deadlines remain unchanged.
 
-The final `browser` job requires the build and the entire browser matrix to succeed and requires all four runner manifests. It gathers per-suite reports/screenshots/traces into the existing combined `browser-validation` artifact. Per-worker artifacts are retained as `browser-validation-forms`, `-native`, `-viewport` and `-features` even when a worker fails. Missing or skipped workers cannot satisfy the gate. A compiled/package artifact by itself is not a passing test result.
+The final `browser` job uses `if: ${{ !cancelled() }}`. It still runs after build/test failures and requires the build and entire browser matrix to succeed, plus all four runner manifests. A canceled/superseded workflow does not need another collector runner and cannot become a passing validation. The collector has a ten-minute execution deadline. Step-level failure artifact uploads remain enabled. Per-worker artifacts retain independent reports even if a later collector does not run.
 
-Pages continues to depend on the **complete successful main Validate run**, not merely `browser-build`. It downloads that exact validated artifact and performs its own HTTPS/commit and public interaction checks. No Pages permission or publication gate is relaxed.
+The previous job-level `always()` condition could keep an aggregate job alive after cancellation; that behavior is documented in the official [workflow cancellation reference](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-cancellation). During the review, a superseded run's final collector was still queued while the next revision was pending. Runner availability can also cause queuing; this change does not claim to eliminate all queue delays. A Node configuration regression verifies the cancellation-aware job expression, both success checks, all manifest requirements and unchanged fail-fast/concurrency policies. It is not an end-to-end measurement of GitHub scheduler behavior.
+
+Reports/screenshots/traces are gathered into the combined `browser-validation` artifact. Per-worker artifacts are retained as `browser-validation-forms`, `-native`, `-viewport` and `-features`, including failure cases. Missing or skipped workers cannot satisfy the successful-run gate. A compiled/package artifact alone is not a passing test result.
+
+Pages continues to depend on the **complete successful main Validate run**, not merely `browser-build` or a skipped collector. It downloads that exact validated artifact and performs its own HTTPS/commit and public interaction checks. No Pages permission or publication gate is relaxed.
 
 ## Local commands
 
@@ -41,6 +45,6 @@ See [validation](validation.md) and the [download-artifact action's documented m
 
 Public Pages run 38453646538 initially deployed main `1489f2a` successfully, then a CDN HTTP 503 for `System.ComponentModel.iv4cyr9ulo.wasm` prevented the row-editing browser from starting. The earlier public smoke, custom-editor and row-layout suites passed. A single unchanged-job rerun exposed a separate workflow error: artifacts from earlier attempts remain visible, so `deploy-pages` rejected two identically named `github-pages` artifacts before deployment.
 
-Uploads and deployments now use the same `github-pages-${{ github.run_attempt }}` name. The seven-test Node runner suite verifies the matching expressions, distinct attempt identities and unchanged read-only artifact/successful-validation source gates. The failure was reproduced against the old workflow before the change. No artifact deletion, wider permission, conditional test skip, automatic interaction retry or weaker deployment verification is added. Existing failed attempts remain available as evidence.
+Uploads and deployments now use the same `github-pages-${{ github.run_attempt }}` name. The Node runner suite verifies matching expressions, distinct attempt identities and unchanged read-only artifact/successful-validation source gates. The failure was reproduced against the old workflow before the change. No artifact deletion, wider permission, conditional test skip, automatic interaction retry or weaker deployment verification is added. Existing failed attempts remain available as evidence.
 
 The supported inputs are documented in the official [upload-pages-artifact](https://github.com/actions/upload-pages-artifact/blob/v3/action.yml) and [deploy-pages](https://github.com/actions/deploy-pages/blob/v4/action.yml) action definitions. Naming is a configuration regression check, not proof that a subsequent deployment or public browser check passed.
