@@ -52,7 +52,13 @@ public sealed class RowEditEditor : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_lastReadOnly == readOnly) return false;
-        _readOnly!(readOnly); _lastReadOnly = readOnly; return true;
+        try { _readOnly!(readOnly); _lastReadOnly = readOnly; return true; }
+        catch
+        {
+            // The adapter may have changed part of its control tree before throwing.
+            // Even returning to the previously successful state must reapply it.
+            _lastReadOnly = null; throw;
+        }
     }
     public void Dispose()
     {

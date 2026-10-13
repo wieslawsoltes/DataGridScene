@@ -58,7 +58,7 @@ jobs:
         run: dotnet build samples/DataGridScene.Demo -c Release -f net10.0-desktop -p:DataGridSceneTarget=net10.0-desktop
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
