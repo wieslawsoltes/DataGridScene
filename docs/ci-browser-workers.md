@@ -1,0 +1,38 @@
+# Browser validation workers
+
+The browser build is compiled once. Four independent Actions workers download the same `browser-application` artifact and compare its `build.json` commit with their checkout before running any suite. The source/build relationship is identical for pull-request merge refs and main. No worker rebuilds a different revision.
+
+`scripts/run-browser-suites.mjs` partitions all eighteen existing commands (seventeen interaction harnesses plus deployment smoke) into four disjoint groups: forms, native, viewport and features. Within a worker, each suite is a separate Node process with its own browser; suites run sequentially so their loopback server port cannot collide. Different workers run on different hosted machines, avoiding artificial concurrent SwiftShader load in a single browser/performance test.
+
+The registry test checks that all eighteen expected harnesses occur exactly once. It also checks unknown group rejection, owned plan copies, error/signal/timeout propagation, execution of later suites after a failure, and source/artifact provenance. Its six Node tests are runner contracts, not additional browser interactions or Uno API contracts.
+
+## Failure semantics
+
+A failed suite is recorded once and is never retried by this runner. Independent later suites still execute. The matrix uses `fail-fast: false`; a failing worker does not cancel the others. Every worker returns a nonzero exit for any failure, process error or timeout. Ten-minute per-suite process deadlines prevent indefinite hangs; normal suite-specific input readiness deadlines remain unchanged.
+
+The final `browser` job requires the build and the entire browser matrix to succeed and requires all four runner manifests. It gathers per-suite reports/screenshots/traces into the existing combined `browser-validation` artifact. Per-worker artifacts are retained as `browser-validation-forms`, `-native`, `-viewport` and `-features` even when a worker fails. Missing or skipped workers cannot satisfy the gate. A compiled/package artifact by itself is not a passing test result.
+
+Pages continues to depend on the **complete successful main Validate run**, not merely `browser-build`. It downloads that exact validated artifact and performs its own HTTPS/commit and public interaction checks. No Pages permission or publication gate is relaxed.
+
+## Local commands
+
+```sh
+npm run test:runner
+npm run test:browser                  # all eighteen suites, sequential
+node scripts/run-browser-suites.mjs forms
+node scripts/run-browser-suites.mjs features
+```
+
+The runner accepts only the registered group names or `all`. `SITE_ROOT`, `BROWSER_RESULTS` and the existing `APP_URL` override remain available. A local-artifact result remains distinct from public deployment verification. The independent original `.mjs` harness entry points remain directly runnable.
+
+## Navigation regression review
+
+Validate 38403973140 passed custom editors, smoke, responsive/transactional forms, native Tab/cells/modes/input/scrollbars, sidebar navigation, template selectors, baseline grid and workspace suites. Its summary suite failed 8 of 20 checks: `summaries` had a window-space center at y=984, below the sidebar's y=972 clipping boundary, even though the button's bottom was within the 1000px browser window. The old harness checked only the browser boundary.
+
+Summary and live-update actions now share `clickNavigationAction`, which performs real wheel scrolling before a single pointer click inside the actual native sidebar viewport. Summary cancellation additionally exercises both 1000px and 720px windows, checks the target lies inside the sidebar, and verifies the complete query is unchanged. No product command, control value, layout forcing, blind click retry or enlarged-window workaround substitutes for those interactions.
+
+## Performance interpretation
+
+The worker split removes serial dependency between unrelated suites and keeps native compilation single-pass. Wall-clock improvement depends on runner availability and artifact transfer; consult exact workflow timestamps rather than assuming a speedup factor. It consumes more concurrent CI machines, not fewer total browser assertions. Original operation-count gates and all 278 interactions remain in place.
+
+See [validation](validation.md) and the [download-artifact action's documented multi-artifact behavior](https://github.com/actions/download-artifact/tree/v4). Browser graphics remain ANGLE/SwiftShader, not a hardware GPU benchmark.
