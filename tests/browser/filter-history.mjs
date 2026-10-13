@@ -28,10 +28,17 @@ async function command(name, data = {}) {
 async function click(name) { await clickChromeAction(page, name); await settle(); }
 async function reset(count = 1000) {
   await page.keyboard.press('Escape'); await page.setViewportSize({ width: 1440, height: 1000 });
+  // Fixture setup only, after the preceding case has recorded its assertions and
+  // failure evidence. Reload intentionally refuses invalid pending edits. Escape
+  // on a toolbar is not a native editor Cancel, so clear the old fixture through
+  // the existing explicit cancel/clear-data command before creating a fresh table.
+  // No assertions below use this command to simulate a successful user operation.
+  await command('clear-data');
   await command('reset', { count }); await command('history-capacity', { value: 10 });
   await command('filter-panel-mode', { value: 'automatic' });
   await command('bands', { value: false }); await command('theme', { dark: false });
-  await waitFor(state => state.recordCount === count && state.frame.width > 300);
+  await waitFor(state => state.recordCount === count && state.scenario === 'Overview' &&
+    !state.isEditing && !state.nativeStats.hasPendingCellEdits && state.frame.width > 300);
 }
 async function open(toolbar = false) {
   await click(toolbar ? 'recent-filters' : 'filter-panel-history');
