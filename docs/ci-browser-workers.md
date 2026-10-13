@@ -37,7 +37,7 @@ Summary and live-update actions now share `clickNavigationAction`, which perform
 
 ## Performance interpretation
 
-The worker split removes serial dependency between unrelated suites and keeps native compilation single-pass. Wall-clock improvement depends on runner availability and artifact transfer; consult exact workflow timestamps rather than assuming a speedup factor. It consumes more concurrent CI machines, not fewer total browser assertions. Original operation-count gates and all 278 previous interactions remain in place. Sixteen recent-filter checks raise the interaction inventory to 294.
+The worker split removes serial dependency between unrelated suites and keeps native compilation single-pass. Wall-clock improvement depends on runner availability and artifact transfer; consult exact workflow timestamps rather than assuming a speedup factor. It consumes more concurrent CI machines, not fewer browser assertions. Original operation-count gates and all 278 previous interactions remain in place. Twenty-three recent-filter/panel-policy checks raise the interaction inventory to 301.
 
 See [validation](validation.md) and the [download-artifact action's documented multi-artifact behavior](https://github.com/actions/download-artifact/tree/v4). Browser graphics remain ANGLE/SwiftShader, not a hardware GPU benchmark.
 

@@ -16,6 +16,7 @@ public sealed partial class MainPage
         for (var current = focused; current is not null && focusPath.Count < 64; current = VisualTreeHelper.GetParent(current))
             if (!focusPath.Add(current)) break;
         bool Available(string key) => actions.TryGetValue(key, out var element) && element is Control { IsEnabled: true };
+        var text = focused as TextBox;
         return new
         {
             visible = panel.Visibility == Visibility.Visible,
@@ -36,6 +37,7 @@ public sealed partial class MainPage
                 isChecked = pair.Value is ToggleMenuFlyoutItem toggle ? (bool?)toggle.IsChecked : null,
                 theme = pair.Value.ActualTheme.ToString()
             }).ToArray(),
+            focusedText = text?.Text, focusedSelectionStart = text?.SelectionStart, focusedSelectionLength = text?.SelectionLength,
             grid.FilterHistoryRevision, grid.FilterHistoryUnavailableReason, grid.FilterDisplayRefreshCount
         };
     }
