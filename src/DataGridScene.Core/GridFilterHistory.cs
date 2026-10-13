@@ -89,7 +89,7 @@ public sealed class GridFilterState
     /// application comparers, getters or Equals implementations. Used to avoid no-op reshaping.</summary>
     public static bool FiltersEqual(GridFilter? left, GridFilter? right)
     {
-        int nodes = 0;
+        int nodes = 0, literals = 0;
         bool Equal(GridFilter? a, GridFilter? b, int depth)
         {
             if (ReferenceEquals(a, b)) return true;
@@ -98,19 +98,35 @@ public sealed class GridFilterState
             if (b is FilterGroup { All: true, Children.Count: 1 } singleB) return Equal(a, singleB.Children[0], depth + 1);
             return (a, b) switch
             {
-                (FieldFilter x, FieldFilter y) => x.Field.Equals(y.Field, StringComparison.OrdinalIgnoreCase) && x.Operator == y.Operator &&
-                    ScalarEqual(x.Value, y.Value) && ScalarEqual(x.Upper, y.Upper) && ValuesEqual(x.Values, y.Values),
+                (FieldFilter x, FieldFilter y) => !string.IsNullOrEmpty(x.Field) && string.Equals(x.Field, y.Field, StringComparison.OrdinalIgnoreCase) && x.Operator == y.Operator &&
+                    (literals += 2) <= MaximumLiterals && ScalarEqual(x.Value, y.Value) && ScalarEqual(x.Upper, y.Upper) && ValuesEqual(x.Values, y.Values, ref literals),
                 (NotFilter x, NotFilter y) => Equal(x.Child, y.Child, depth + 1),
-                (FilterGroup x, FilterGroup y) => x.All == y.All && x.Children.Count == y.Children.Count &&
-                    x.Children.Count <= MaximumNodes && x.Children.Select((child, i) => Equal(child, y.Children[i], depth + 1)).All(equal => equal),
+                (FilterGroup x, FilterGroup y) => GroupsEqual(x, y, depth),
                 _ => false
             };
         }
+        bool GroupsEqual(FilterGroup a, FilterGroup b, int depth)
+        {
+            if (a.All != b.All || a.Children is null || b.Children is null) return false;
+            int count = a.Children.Count;
+            if (count is < 0 or > MaximumNodes || count != b.Children.Count) return false;
+            // IReadOnlyList exposes indexed access; do not invoke an unrelated custom
+            // enumerator, which need not obey the collection's advertised count.
+            for (int i = 0; i < count; i++) if (!Equal(a.Children[i], b.Children[i], depth + 1)) return false;
+            return true;
+        }
         return Equal(left, right, 0);
     }
-    private static bool ValuesEqual(IReadOnlyList<object?>? a, IReadOnlyList<object?>? b) =>
-        ReferenceEquals(a, b) || a is not null && b is not null && a.Count == b.Count && a.Count <= ColumnValueFilter.MaximumValues &&
-        a.Select((value, i) => ScalarEqual(value, b[i])).All(equal => equal);
+    private static bool ValuesEqual(IReadOnlyList<object?>? a, IReadOnlyList<object?>? b, ref int literals)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a is null || b is null) return false;
+        int count = a.Count;
+        if (count is < 0 or > ColumnValueFilter.MaximumValues || count != b.Count || count > MaximumLiterals - literals) return false;
+        literals += count;
+        for (int i = 0; i < count; i++) if (!ScalarEqual(a[i], b[i])) return false;
+        return true;
+    }
     private static bool ScalarEqual(object? a, object? b)
     {
         if (ReferenceEquals(a, b)) return true;

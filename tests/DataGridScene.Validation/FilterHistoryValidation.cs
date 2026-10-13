@@ -125,6 +125,11 @@ public static class FilterHistoryValidation
             Check(!GridFilterState.FiltersEqual(a, a with { Value = 1m }));
             Check(!GridFilterState.FiltersEqual(new FilterGroup(true, []), new FilterGroup(false, [])));
             Check(!GridFilterState.FiltersEqual(a, new NotFilter(a)));
+            var indexedA = new FieldFilter("Name", FilterOperator.In, Values: new IndexedOnlyList<object?>(["A", "B"]));
+            var indexedB = new FieldFilter("Name", FilterOperator.In, Values: new IndexedOnlyList<object?>(["A", "B"]));
+            Check(GridFilterState.FiltersEqual(indexedA, indexedB));
+            Check(GridFilterState.FiltersEqual(new FilterGroup(false, new IndexedOnlyList<GridFilter>([a, indexedA])), new FilterGroup(false, new IndexedOnlyList<GridFilter>([a, indexedB]))));
+            Check(!GridFilterState.FiltersEqual(new FilterGroup(false, null!), new FilterGroup(false, [])));
         });
         Test("filter-only-snapshot-never-owns-records-or-query-options", () => {
             var schema = Schema(); var state = GridFilterState.Capture(schema, new FieldFilter("Name", FilterOperator.Contains, "A"));
@@ -133,6 +138,13 @@ public static class FilterHistoryValidation
             Check(next.Search == query.Search && ReferenceEquals(next.Sorts, query.Sorts) && ReferenceEquals(next.Groups, query.Groups));
         });
         return results.AsReadOnly();
+    }
+    private sealed class IndexedOnlyList<T>(T[] values) : IReadOnlyList<T>
+    {
+        public int Count => values.Length;
+        public T this[int index] => values[index];
+        public IEnumerator<T> GetEnumerator() => throw new InvalidOperationException("Bounded indexed comparisons must not call custom enumerators.");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
     private sealed record ApplicationFilter : GridFilter
     {

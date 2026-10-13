@@ -22,6 +22,7 @@ public sealed partial class GridControl
             if (value is < 0 or > GridFilterHistory.MaximumCapacity) throw new ArgumentOutOfRangeException(nameof(value));
             _filterHistoryCapacity = value;
             if (_filterHistory is not null) _filterHistory.Capacity = value;
+            if (value == 0) { _currentFilterState = null; FilterHistoryUnavailableReason = null; }
             RefreshFilterHistory(); Changed();
         }
     }
