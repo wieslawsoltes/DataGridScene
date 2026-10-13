@@ -33,7 +33,9 @@ public sealed class GridFilterState
         foreach (var (field, selection) in values) if (selection.ToFilter(field) is { } filter) terms.Add(filter);
         // Preserve the same grouping as GridControl.ApplyFilter; never stringify/reparse
         // typed criteria or checked values, including large integers and timestamps.
-        EffectiveFilter = terms.Count == 0 ? null : texts.Count == 0 && values.Count == 0 ? criteria : GridFilter.And(terms.ToArray());
+        // The public effective root must own a read-only collection too. Exposing the
+        // params array of GridFilter.And would let a caller corrupt retained history.
+        EffectiveFilter = terms.Count == 0 ? null : texts.Count == 0 && values.Count == 0 ? criteria : new FilterGroup(true, terms.AsReadOnly());
     }
 
     public static GridFilterState Capture(GridSchema schema, GridFilter? criteria = null,

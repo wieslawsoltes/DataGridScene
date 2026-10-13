@@ -57,6 +57,15 @@ public static class FilterHistoryValidation
             children.Clear(); values.Clear(); texts.Clear(); checkedValues.Clear();
             Check(((FilterGroup)state.Criteria!).Children.Count == 1 && state.TextFilters["Key"] == ">5" && state.ValueFilters["Name"].Values.Count == 3);
             Reject<NotSupportedException>(() => ((IList<object?>)state.ValueFilters["Name"].Values).Clear());
+            var effective = (FilterGroup)state.EffectiveFilter!;
+            var first = effective.Children[0];
+            Reject<NotSupportedException>(() => ((IList<GridFilter>)effective.Children)[0] = new FilterGroup(false, []));
+            Reject<NotSupportedException>(() => ((IList<GridFilter>)((FilterGroup)state.Criteria).Children)[0] = new FilterGroup(false, []));
+            Reject<NotSupportedException>(() => ((IDictionary<string, string>)state.TextFilters)["Key"] = "=0");
+            Reject<NotSupportedException>(() => ((IDictionary<string, ColumnValueFilter>)state.ValueFilters).Clear());
+            Check(ReferenceEquals(first, effective.Children[0]) && effective.Children.Count == 3);
+            var history = new GridFilterHistory(schema); history.Remember(state);
+            Check(ReferenceEquals(history.Entries[0].State.EffectiveFilter, effective));
         });
         Test("structural-duplicates-ignore-map-order-and-field-case", () => {
             var schema = Schema();
