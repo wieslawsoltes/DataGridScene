@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { browserGroups, suitePlan, runSuiteGroup, validateArtifactCommit } from '../../scripts/run-browser-suites.mjs';
 
@@ -41,4 +42,22 @@ test('artifact provenance rejects missing and mismatched revisions', () => {
   assert.equal(validateArtifactCommit({ commit: 'abc' }, 'abc'), 'abc');
   for (const value of [null, {}, { commit: '' }, { commit: 1 }]) assert.throws(() => validateArtifactCommit(value, 'abc'));
   assert.throws(() => validateArtifactCommit({ commit: 'other' }, 'abc'));
+});
+
+test('Pages reruns select only their own artifact without deleting earlier evidence', async () => {
+  const workflow = await readFile(new URL('../../.github/workflows/pages.yml', import.meta.url), 'utf8');
+  function actionInput(action, name) {
+    const escaped = action.replaceAll('/', '\\/');
+    const section = workflow.match(new RegExp('uses: ' + escaped + '@[^\\n]+([\\s\\S]*?)(?=\\n      - |$)'))?.[1];
+    assert.ok(section, 'Missing ' + action);
+    return section.match(new RegExp('^          ' + name + ': (.+)$', 'm'))?.[1];
+  }
+  const upload = actionInput('actions/upload-pages-artifact', 'name');
+  const deploy = actionInput('actions/deploy-pages', 'artifact_name');
+  assert.equal(upload, 'github-pages-${{ github.run_attempt }}');
+  assert.equal(deploy, upload);
+  assert.notEqual(upload.replace('${{ github.run_attempt }}', '1'), upload.replace('${{ github.run_attempt }}', '2'));
+  assert.match(workflow, /actions: read/);
+  assert.match(workflow, /github.event.workflow_run.conclusion == 'success'/);
+  assert.equal(actionInput('actions/download-artifact', 'run-id'), '${{ github.event.workflow_run.id }}');
 });

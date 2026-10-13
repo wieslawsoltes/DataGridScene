@@ -4,7 +4,7 @@ The browser build is compiled once. Four independent Actions workers download th
 
 `scripts/run-browser-suites.mjs` partitions all nineteen commands (eighteen interaction harnesses plus deployment smoke) into four disjoint groups: forms, native, viewport and features. Within a worker, each suite is a separate Node process with its own browser; suites run sequentially so their loopback server port cannot collide. Different workers run on different hosted machines, avoiding artificial concurrent SwiftShader load in a single browser/performance test.
 
-The registry test checks that all nineteen expected harnesses occur exactly once. It also checks unknown group rejection, owned plan copies, error/signal/timeout propagation, execution of later suites after a failure, and source/artifact provenance. Its six Node tests are runner contracts, not additional browser interactions or Uno API contracts.
+The registry test checks that all nineteen expected harnesses occur exactly once. It also checks unknown group rejection, owned plan copies, error/signal/timeout propagation, execution of later suites after a failure, and source/artifact provenance. Its seven Node tests are runner/deployment contracts, not additional browser interactions or Uno API contracts.
 
 ## Failure semantics
 
@@ -36,3 +36,11 @@ Summary and live-update actions now share `clickNavigationAction`, which perform
 The worker split removes serial dependency between unrelated suites and keeps native compilation single-pass. Wall-clock improvement depends on runner availability and artifact transfer; consult exact workflow timestamps rather than assuming a speedup factor. It consumes more concurrent CI machines, not fewer total browser assertions. Original operation-count gates and all 278 previous interactions remain in place. Sixteen recent-filter checks raise the interaction inventory to 294.
 
 See [validation](validation.md) and the [download-artifact action's documented multi-artifact behavior](https://github.com/actions/download-artifact/tree/v4). Browser graphics remain ANGLE/SwiftShader, not a hardware GPU benchmark.
+
+## Deployment rerun identity
+
+Public Pages run 38453646538 initially deployed main `1489f2a` successfully, then a CDN HTTP 503 for `System.ComponentModel.iv4cyr9ulo.wasm` prevented the row-editing browser from starting. The earlier public smoke, custom-editor and row-layout suites passed. A single unchanged-job rerun exposed a separate workflow error: artifacts from earlier attempts remain visible, so `deploy-pages` rejected two identically named `github-pages` artifacts before deployment.
+
+Uploads and deployments now use the same `github-pages-${{ github.run_attempt }}` name. The seven-test Node runner suite verifies the matching expressions, distinct attempt identities and unchanged read-only artifact/successful-validation source gates. The failure was reproduced against the old workflow before the change. No artifact deletion, wider permission, conditional test skip, automatic interaction retry or weaker deployment verification is added. Existing failed attempts remain available as evidence.
+
+The supported inputs are documented in the official [upload-pages-artifact](https://github.com/actions/upload-pages-artifact/blob/v3/action.yml) and [deploy-pages](https://github.com/actions/deploy-pages/blob/v4/action.yml) action definitions. Naming is a configuration regression check, not proof that a subsequent deployment or public browser check passed.
