@@ -8,6 +8,13 @@ namespace DataGridScene.Controls;
 public sealed partial class GridControl
 {
     public GridFilterPanel FilterPanel { get; } = new();
+    /// <summary>Presentation policy independent of filter conditions, enabled state,
+    /// history and workspace serialization. May be configured before assigning data.</summary>
+    public FilterPanelDisplayMode FilterPanelMode
+    {
+        get => FilterPanel.DisplayMode;
+        set => FilterPanel.DisplayMode = value;
+    }
     public event EventHandler? FilterEditorRequested;
     /// <summary>Suspend filters without removing them. Search is intentionally independent.</summary>
     public bool IsFilterEnabled
@@ -30,6 +37,7 @@ public sealed partial class GridControl
         FilterPanel.ClearRequested += (_, _) => Safe(ClearFilterConditions);
         FilterPanel.HistoryRequested += (_, id) => Safe(() => ApplyRecentFilter(id));
         FilterPanel.HistoryClearRequested += (_, _) => ClearFilterHistory();
+        FilterPanel.DisplayModeChanged += (_, _) => Changed();
         FilterPanel.EditRequested += (_, _) => FilterEditorRequested?.Invoke(this, EventArgs.Empty);
         FilterPanel.TokenEditRequested += (_, key) =>
         {

@@ -45,6 +45,7 @@ public sealed partial class GridFilterPanel : UserControl
         var clear = ActionButton("×", () => ClearRequested?.Invoke(this, EventArgs.Empty));
         AutomationProperties.SetName(clear, "Clear filter conditions");
         _actions["filter-panel-clear"] = clear; Grid.SetColumn(clear, 5); _layout.Children.Add(clear);
+        InitializeDisplayMode();
         Content = _layout; ApplyTheme(false);
     }
     private static Button ActionButton(string text, Action action)
@@ -60,9 +61,7 @@ public sealed partial class GridFilterPanel : UserControl
         if (next.Length > 1025 || next.Any(item => item is null || string.IsNullOrEmpty(item.Key)) || next.Select(item => item.Key).Distinct().Count() != next.Length)
             throw new ArgumentException("Filter tokens must have unique keys and at most 1,025 entries.", nameof(items));
         _enabled.IsChecked = enabled; _tokens.Opacity = enabled ? 1 : 0.55;
-        Visibility = next.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        _expandButton.IsEnabled = next.Length > 0;
-        if (next.Length == 0) IsExpanded = false;
+        UpdateDisplayMode(next.Length);
         if (_items.SequenceEqual(next)) return;
         _items = Array.AsReadOnly(next); Rebuild();
     }
