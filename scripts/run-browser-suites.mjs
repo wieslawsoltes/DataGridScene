@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 export const browserGroups = Object.freeze(Object.fromEntries(Object.entries({
   forms: ['row-editor-templates', 'row-form-layout', 'row-editing', 'summaries'],
   native: ['native-tab-order', 'native-cells', 'native-input-regressions', 'review'],
-  viewport: ['native-modes', 'scrollbars', 'navigation-viewport', 'template-selectors'],
+  viewport: ['native-modes', 'scrollbars', 'navigation-viewport', 'template-selectors', 'filter-history'],
   features: ['run', 'workspace', 'performance', 'value-filters', 'chrome', 'deployment-smoke']
 }).map(([key, values]) => [key, Object.freeze(values)])));
 

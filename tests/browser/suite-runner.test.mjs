@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { browserGroups, suitePlan, runSuiteGroup, validateArtifactCommit } from '../../scripts/run-browser-suites.mjs';
 
-test('all eighteen existing harnesses occur exactly once in the shard partition', () => {
+test('all nineteen harnesses occur exactly once in the shard partition', () => {
   const expected = ['row-editor-templates', 'deployment-smoke', 'row-form-layout', 'row-editing', 'native-tab-order',
     'native-cells', 'native-modes', 'native-input-regressions', 'scrollbars', 'navigation-viewport', 'template-selectors',
-    'run', 'workspace', 'summaries', 'performance', 'review', 'value-filters', 'chrome'];
+    'run', 'workspace', 'summaries', 'performance', 'review', 'value-filters', 'chrome', 'filter-history'];
   const actual = suitePlan();
-  assert.deepEqual(actual.toSorted(), expected.toSorted()); assert.equal(new Set(actual).size, 18);
+  assert.deepEqual(actual.toSorted(), expected.toSorted()); assert.equal(new Set(actual).size, 19);
   assert.equal(Object.keys(browserGroups).length, 4);
 });
 test('caller cannot mutate later plans and unknown/prototype group names are rejected', () => {

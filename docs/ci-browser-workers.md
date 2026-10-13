@@ -2,9 +2,9 @@
 
 The browser build is compiled once. Four independent Actions workers download the same `browser-application` artifact and compare its `build.json` commit with their checkout before running any suite. The source/build relationship is identical for pull-request merge refs and main. No worker rebuilds a different revision.
 
-`scripts/run-browser-suites.mjs` partitions all eighteen existing commands (seventeen interaction harnesses plus deployment smoke) into four disjoint groups: forms, native, viewport and features. Within a worker, each suite is a separate Node process with its own browser; suites run sequentially so their loopback server port cannot collide. Different workers run on different hosted machines, avoiding artificial concurrent SwiftShader load in a single browser/performance test.
+`scripts/run-browser-suites.mjs` partitions all nineteen commands (eighteen interaction harnesses plus deployment smoke) into four disjoint groups: forms, native, viewport and features. Within a worker, each suite is a separate Node process with its own browser; suites run sequentially so their loopback server port cannot collide. Different workers run on different hosted machines, avoiding artificial concurrent SwiftShader load in a single browser/performance test.
 
-The registry test checks that all eighteen expected harnesses occur exactly once. It also checks unknown group rejection, owned plan copies, error/signal/timeout propagation, execution of later suites after a failure, and source/artifact provenance. Its six Node tests are runner contracts, not additional browser interactions or Uno API contracts.
+The registry test checks that all nineteen expected harnesses occur exactly once. It also checks unknown group rejection, owned plan copies, error/signal/timeout propagation, execution of later suites after a failure, and source/artifact provenance. Its six Node tests are runner contracts, not additional browser interactions or Uno API contracts.
 
 ## Failure semantics
 
@@ -18,7 +18,7 @@ Pages continues to depend on the **complete successful main Validate run**, not 
 
 ```sh
 npm run test:runner
-npm run test:browser                  # all eighteen suites, sequential
+npm run test:browser                  # all nineteen suites, sequential
 node scripts/run-browser-suites.mjs forms
 node scripts/run-browser-suites.mjs features
 ```
@@ -33,6 +33,6 @@ Summary and live-update actions now share `clickNavigationAction`, which perform
 
 ## Performance interpretation
 
-The worker split removes serial dependency between unrelated suites and keeps native compilation single-pass. Wall-clock improvement depends on runner availability and artifact transfer; consult exact workflow timestamps rather than assuming a speedup factor. It consumes more concurrent CI machines, not fewer total browser assertions. Original operation-count gates and all 278 interactions remain in place.
+The worker split removes serial dependency between unrelated suites and keeps native compilation single-pass. Wall-clock improvement depends on runner availability and artifact transfer; consult exact workflow timestamps rather than assuming a speedup factor. It consumes more concurrent CI machines, not fewer total browser assertions. Original operation-count gates and all 278 previous interactions remain in place. Sixteen recent-filter checks raise the interaction inventory to 294.
 
 See [validation](validation.md) and the [download-artifact action's documented multi-artifact behavior](https://github.com/actions/download-artifact/tree/v4). Browser graphics remain ANGLE/SwiftShader, not a hardware GPU benchmark.

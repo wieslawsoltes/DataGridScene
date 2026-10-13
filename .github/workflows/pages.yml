@@ -97,6 +97,12 @@ jobs:
           GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
           BROWSER_RESULTS: artifacts/deployed-verification
         run: node tests/browser/native-input-regressions.mjs && node tests/browser/scrollbars.mjs
+      - name: Verify recent filters and expanded expressions on public Pages
+        env:
+          APP_URL: ${{ steps.deployment.outputs.page_url }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          BROWSER_RESULTS: artifacts/deployed-verification
+        run: node tests/browser/filter-history.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
