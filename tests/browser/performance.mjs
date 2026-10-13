@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { startServer } from './server.mjs';
+import { clickNavigationAction } from './navigation-actions.mjs';
 
 const directory = path.resolve(process.env.BROWSER_RESULTS ?? 'artifacts/browser-validation', 'performance');
 await mkdir(directory, { recursive: true });
@@ -25,8 +26,10 @@ async function command(name, data={}) {
   assert.equal(result.ok,true,result.error); await settle(); return result;
 }
 async function click(name) {
+  if (name.startsWith('scenario-') || name.startsWith('live-')) return clickNavigationAction(page, name);
   const s = await snapshot(), r = s.buttons[name]; assert.ok(r, name);
-  assert.ok(r.y>=0 && r.bottom<=1100, 'Action must be inside the test viewport');
+  const viewport = page.viewportSize();
+  assert.ok(r.width>0 && r.height>0 && r.x>=0 && r.y>=0 && r.right<=viewport.width && r.bottom<=viewport.height, 'Action must be inside the test viewport');
   await page.mouse.click(r.x+r.width/2,r.y+r.height/2); await settle();
 }
 function cell(s,field) {
@@ -131,7 +134,7 @@ try {
   await page.screenshot({path:path.join(directory,'live-updates.png')});
 } catch(e) { results.push({name:'perf.startup',passed:false,error:String(e.stack??e)}); }
 finally {
-  const report={commit:process.env.GITHUB_SHA??null,passed:results.length>0&&results.every(r=>r.passed),passedCount:results.filter(r=>r.passed).length,results,errors,measurements,browser:browser.version(),graphics:'ANGLE SwiftShader software backend; not hardware GPU performance'};
+  const report={commit:process.env.GITHUB_SHA??null,passed:results.length===11&&results.every(r=>r.passed),passedCount:results.filter(r=>r.passed).length,results,errors,measurements,browser:browser.version(),graphics:'ANGLE SwiftShader software backend; not hardware GPU performance'};
   await writeFile(path.join(directory,'performance-validation.json'),JSON.stringify(report,null,2));
   await context.tracing.stop({path:path.join(directory,'trace.zip')}).catch(()=>{}); await browser.close();
   if(server) await new Promise(resolve=>server.close(resolve)); if(!report.passed) process.exitCode=1;

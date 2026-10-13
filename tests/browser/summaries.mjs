@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { startServer } from './server.mjs';
+import { clickNavigationAction } from './navigation-actions.mjs';
 
 const directory = path.resolve(process.env.BROWSER_RESULTS ?? 'artifacts/browser-validation', 'summaries');
 await mkdir(directory, { recursive: true });
@@ -25,9 +26,13 @@ async function waitFor(predicate, timeout = 10000) {
   throw new Error('Summary assertion timed out: ' + JSON.stringify(await snapshot()));
 }
 async function click(name) {
+  // A child can lie inside the browser window but below its clipped native
+  // ScrollViewer. Scroll the sidebar with real wheel input before a single click.
+  if (name === 'summaries' || name.startsWith('scenario-')) return clickNavigationAction(page, name);
   const state = await snapshot(), rect = name.startsWith('menu-summary-') ? state.summaryActions[name] : name.startsWith('summary-') ? state.summaryEditor?.actions[name] : state.buttons[name];
   assert.ok(rect, `Missing UI action ${name}`);
-  assert.ok(rect.y >= 0 && rect.y + rect.height <= 1000, `${name} must be inside the viewport`);
+  const viewport = page.viewportSize();
+  assert.ok(rect.width > 0 && rect.height > 0 && rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= viewport.width && rect.y + rect.height <= viewport.height, `${name} must be inside the viewport`);
   await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2); await settle();
 }
 async function scenario() {
@@ -69,8 +74,6 @@ try {
     await page.screenshot({ path: path.join(directory, 'group-summaries.png') });
   });
   await test('summary.navigation-targets-stable-across-font-loading', async () => {
-    // Keep actual pointer input and assert the layout itself stays stable. No retry
-    // of a wrong navigation click and no diagnostic call to activate the scenario.
     const initial = await snapshot();
     const targets = Object.fromEntries(Object.entries(initial.buttons).filter(([key]) => key.startsWith('scenario-')));
     for (const rect of Object.values(targets)) assert.equal(rect.height, 40);
@@ -138,9 +141,19 @@ try {
     const values = sorted.groups.map(g => g.summaries.sales); assert.deepEqual(values, [...values].sort((a,b)=>a-b));
   });
   await test('summary.editor-cancel-is-nonmutating', async () => {
-    await scenario(); const before = await snapshot(); await openEditor(); assert.equal((await snapshot()).summaryEditor.itemCount, 3);
-    await type('summary-item-0-format', 'Changed {0}'); await page.keyboard.press('Escape');
-    await waitFor(s => !s.summaryEditor); assert.deepEqual((await snapshot()).query, before.query);
+    // Exercise the exact sidebar/bottom-status-strip boundary that failed at
+    // 1000px, and an actually short window. No larger viewport workaround.
+    try {
+      for (const height of [1000, 720]) {
+        await page.setViewportSize({ width: 1440, height }); await settle();
+        await scenario(); const before = await snapshot(); await openEditor();
+        const opened = await snapshot(); assert.equal(opened.summaryEditor.itemCount, 3);
+        const rect = opened.buttons.summaries, nav = opened.navigation.bounds;
+        assert.ok(rect.y + rect.height / 2 > nav.y && rect.y + rect.height / 2 < nav.bottom);
+        await type('summary-item-0-format', 'Changed {0}'); await page.keyboard.press('Escape');
+        await waitFor(s => !s.summaryEditor); assert.deepEqual((await snapshot()).query, before.query);
+      }
+    } finally { await page.setViewportSize({ width: 1440, height: 1000 }); await settle(); }
   });
   await test('summary.editor-format-and-apply', async () => {
     await scenario(); await openEditor(); await type('summary-item-0-format', 'Records: {0:N0}');
@@ -224,7 +237,7 @@ try {
   await test('summary.no-unhandled-errors', async () => assert.deepEqual(errors, []));
 } catch (error) { results.push({ name:'summary.startup',passed:false,error:String(error.stack??error) }); console.error(error); }
 finally {
-  const report = { commit:process.env.GITHUB_SHA??null, passed:results.length > 0 && results.every(r=>r.passed), passedCount:results.filter(r=>r.passed).length, results, errors, browser:browser.version() };
+  const report = { commit:process.env.GITHUB_SHA??null, passed:results.length === 20 && results.every(r=>r.passed), passedCount:results.filter(r=>r.passed).length, results, errors, browser:browser.version() };
   await writeFile(path.join(directory,'summary-validation.json'), JSON.stringify(report,null,2));
   await context.tracing.stop({ path:path.join(directory,'trace.zip') }).catch(()=>{});
   await browser.close(); if(server) await new Promise(resolve=>server.close(resolve));
