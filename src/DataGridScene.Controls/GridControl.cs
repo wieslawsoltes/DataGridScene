@@ -114,6 +114,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     private void Attach(GridTable? table)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(GridControl));
+        ResetFilterHistory(table);
         CancelEdit();
         CloseValueFilter(); ResetCellControls();
         ResetPointerState();
@@ -297,7 +298,9 @@ public sealed partial class GridControl : UserControl, IDisposable
         if (criteria is not null) terms.Add(criteria);
         foreach (var pair in texts) if (CriteriaParser.AutoFilter(pair.Key, pair.Value) is { } filter) terms.Add(filter);
         foreach (var (field, selection) in values ?? _valueFilters) if (selection.ToFilter(field) is { } filter) terms.Add(filter);
-        View!.SetQuery(View.RequestedQuery with { Filter = terms.Count == 0 ? null : GridFilter.And(terms.ToArray()) });
+        var effective = terms.Count == 0 ? null : GridFilter.And(terms.ToArray());
+        if (GridFilterState.FiltersEqual(effective, View!.RequestedQuery.Filter)) return;
+        View.SetQuery(View.RequestedQuery with { Filter = effective });
         _offsetY = 0; UpdateGeometry();
     }
     public void ClearFilters()
@@ -413,6 +416,7 @@ public sealed partial class GridControl : UserControl, IDisposable
     public new void Dispose()
     {
         if (_disposed) return;
+        ResetFilterHistory(null);
         CancelEdit(); CloseValueFilter(); _disposed = true; ResetCellControls();
         if (View is not null) { View.Changed -= ViewChanged; View.Dispose(); }
         if (ColumnLayout is not null) ColumnLayout.Changed -= LayoutChanged;

@@ -148,6 +148,10 @@ public sealed partial class MainPage : Page
         var searchPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         _search.Height = 28; _search.MinHeight = 28; _search.CornerRadius = new CornerRadius(1); searchPanel.Children.Add(_search);
         var clear = Button("clear", "×", ClearFilters); clear.Width = 30; clear.Padding = new Thickness(3); AutomationProperties.SetName(clear, "Clear filters and search"); searchPanel.Children.Add(clear);
+        var recent = Button("recent-filters", "", () => DataGrid.ShowRecentFilters(_actions["recent-filters"]));
+        recent.Content = new VectorIcon(SceneGlyph.DropDown, 16); recent.Width = 28; recent.Padding = new Thickness(3);
+        AutomationProperties.SetName(recent, "Recent filters"); ToolTipService.SetToolTip(recent, "Recent filters — restore a previous condition");
+        searchPanel.Children.Add(recent);
         Grid.SetColumn(searchPanel, 1); heading.Children.Add(searchPanel); _actions["search"] = _search; area.Children.Add(heading);
         var border = new Border { BorderThickness = new Thickness(1), BorderBrush = Brush("#cfcfcf"), Child = DataGrid };
         Grid.SetRow(border, 1); area.Children.Add(border);
@@ -312,6 +316,7 @@ public sealed partial class MainPage : Page
     {
         if (DataGrid.View is null) return;
         RefreshOptions(); RefreshChrome();
+        if (_actions.TryGetValue("recent-filters", out var recent) && recent is Button { Content: VectorIcon icon }) icon.IsDark = DataGrid.DarkTheme;
         _subtitle.Text = $"{RecordCount:N0} orders · {Scenario} · virtualized rows and columns";
         _status.Text = Message ?? DataGrid.LastError ?? $"{DataGrid.View.FilteredRecords.Count:N0} of {RecordCount:N0} records     |     {(DataGrid.SelectionMode == GridSelectionMode.Cells ? $"{DataGrid.Selection.SelectedCellCount:N0} cells" : $"{DataGrid.Selection.Count:N0} rows")} selected     |     Skia canvas · Uno Platform";
         _filterDescription.Text = DataGrid.View.Query.Filter is null && DataGrid.View.Query.Search.Length == 0 ? "No filter applied     ·     Right-click a column header for sorting, grouping and layout options" : $"Filter active   ·   {DataGrid.View.FilteredRecords.Count:N0} matching records   ·   Use Clear to remove filters";

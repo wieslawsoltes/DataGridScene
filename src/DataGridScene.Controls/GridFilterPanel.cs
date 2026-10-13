@@ -8,8 +8,8 @@ namespace DataGridScene.Controls;
 public sealed record FilterPanelToken(string Key, string Caption, string Description);
 
 /// <summary>Reusable native filter strip with independent enable, edit, remove and clear commands.
-/// Equal state does not rebuild controls. Long expressions scroll rather than expand row layout.</summary>
-public sealed class GridFilterPanel : UserControl
+/// Equal state does not rebuild controls. Expansion and history are bounded native surfaces.</summary>
+public sealed partial class GridFilterPanel : UserControl
 {
     private readonly Grid _layout = new() { ColumnSpacing = 4, Padding = new Thickness(6, 3, 6, 3) };
     private readonly StackPanel _tokens = new() { Orientation = Orientation.Horizontal, Spacing = 5 };
@@ -39,11 +39,12 @@ public sealed class GridFilterPanel : UserControl
         _actions["filter-panel-enable"] = _enabled; _layout.Children.Add(_enabled);
         var scroll = new ScrollViewer { Content = _tokens, HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalScrollMode = ScrollMode.Enabled };
         Grid.SetColumn(scroll, 1); _layout.Children.Add(scroll);
+        InitializeHistoryAndExpansion();
         var edit = ActionButton("Edit Filter", () => EditRequested?.Invoke(this, EventArgs.Empty));
-        _actions["filter-panel-edit"] = edit; Grid.SetColumn(edit, 2); _layout.Children.Add(edit);
+        _actions["filter-panel-edit"] = edit; Grid.SetColumn(edit, 4); _layout.Children.Add(edit);
         var clear = ActionButton("×", () => ClearRequested?.Invoke(this, EventArgs.Empty));
         AutomationProperties.SetName(clear, "Clear filter conditions");
-        _actions["filter-panel-clear"] = clear; Grid.SetColumn(clear, 3); _layout.Children.Add(clear);
+        _actions["filter-panel-clear"] = clear; Grid.SetColumn(clear, 5); _layout.Children.Add(clear);
         Content = _layout; ApplyTheme(false);
     }
     private static Button ActionButton(string text, Action action)
@@ -60,6 +61,8 @@ public sealed class GridFilterPanel : UserControl
             throw new ArgumentException("Filter tokens must have unique keys and at most 1,025 entries.", nameof(items));
         _enabled.IsChecked = enabled; _tokens.Opacity = enabled ? 1 : 0.55;
         Visibility = next.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        _expandButton.IsEnabled = next.Length > 0;
+        if (next.Length == 0) IsExpanded = false;
         if (_items.SequenceEqual(next)) return;
         _items = Array.AsReadOnly(next); Rebuild();
     }
@@ -91,6 +94,7 @@ public sealed class GridFilterPanel : UserControl
         if (_dark == dark && ContentBuildCount > 0) return;
         _dark = dark; RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
         _layout.Background = new SolidColorBrush(dark ? Windows.UI.Color.FromArgb(255, 42, 42, 42) : Windows.UI.Color.FromArgb(255, 246, 246, 246));
+        UpdateHistoryTheme();
         if (_items.Count > 0) Rebuild();
     }
 }

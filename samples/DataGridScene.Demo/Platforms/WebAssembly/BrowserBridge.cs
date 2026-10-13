@@ -29,7 +29,7 @@ public static partial class BrowserBridge
             nativeStats = new { grid.RealizedCellControlCount, grid.PooledCellControlCount, grid.CreatedCellControlCount,
                 grid.ReusedCellControlCount, grid.CellControlBindCount, grid.CellControlPlacementCount, grid.HasPendingCellEdits, grid.CellControlAppearanceCount, grid.TemplateSelectorCallCount, grid.CachedTemplateChoiceCount },
             chrome = page.ChromeSnapshot(),
-            filterPanel = new { visible = grid.FilterPanel.Visibility == Visibility.Visible, items = grid.FilterPanel.Items.Select(item => new { item.Key, item.Caption, item.Description }).ToArray(), grid.FilterPanel.IsFilterEnabled, grid.FilterPanel.ContentBuildCount },
+            filterPanel = new { visible = grid.FilterPanel.Visibility == Visibility.Visible, items = grid.FilterPanel.Items.Select(item => new { item.Key, item.Caption, item.Description }).ToArray(), grid.FilterPanel.IsFilterEnabled, grid.FilterPanel.ContentBuildCount, grid.FilterPanel.IsExpanded, grid.FilterPanel.ExpandedExpression, grid.FilterPanel.IsHistoryOpen, grid.FilterPanel.HistoryBuildCount, history = grid.FilterPanel.HistoryItems, grid.FilterHistoryRevision, grid.FilterHistoryUnavailableReason },
             ready = page.Ready, page.Scenario, page.RecordCount, filteredCount = view?.FilteredRecords.Count, viewRowCount = view?.Rows.Count,
             page.Message, grid.LastError, grid.IsEditing, grid.IsEditorReady, grid.EditorText, grid.EditingField, grid.EditingRecordId,
             selectionMode = grid.SelectionMode.ToString(), selectedCellCount = grid.Selection.SelectedCellCount,
@@ -50,7 +50,7 @@ public static partial class BrowserBridge
             origin = new { origin.X, origin.Y },
             frame = frame is null ? null : new
             {
-                frame.Width, frame.Height, frame.HeaderTop, frame.FilterTop, frame.BodyTop, frame.FooterTop, frame.SummaryGeometryBuildCount,
+                frame.Width, frame.Height, frame.HeaderTop, frame.FilterTop, frame.BodyTop, frame.BodyHeight, frame.FooterTop, frame.SummaryGeometryBuildCount,
                 summaryCells = SummaryGeometry.VisibleCells(frame).ToArray(),
                 columns = frame.Columns.Slots, groups = frame.GroupChips, bands = frame.Bands, bandLevels = grid.ColumnLayout!.BandLevels,
                 rows = Enumerable.Range(frame.VisibleRows.Start, frame.VisibleRows.Count).Select(index => new
@@ -83,6 +83,11 @@ public static partial class BrowserBridge
                 case "native-fixture": page.ApplyNativeCellScenario(input.GetProperty("count").GetInt32()); break;
                 case "validate-native-controls": return JsonSerializer.Serialize(new { ok = true, report = NativeControlChecks.Run() }, Json);
                 case "validate-chrome": return JsonSerializer.Serialize(new { ok = true, report = ChromeControlChecks.Run() }, Json);
+                case "history-capacity": grid.FilterHistoryCapacity = input.GetProperty("value").GetInt32(); break;
+                case "validate-filter-history": return JsonSerializer.Serialize(new { ok = true, report = FilterHistoryControlChecks.Run() }, Json);
+                case "validate-filter-history-core":
+                    var checks = DataGridScene.Validation.FilterHistoryValidation.Run();
+                    return JsonSerializer.Serialize(new { ok = true, report = new DataGridScene.Validation.ValidationReport(checks, checks.Sum(check => check.Milliseconds)) }, Json);
                 case "filter-enabled": grid.IsFilterEnabled = input.GetProperty("value").GetBoolean(); break;
                 case "validate-controls": return JsonSerializer.Serialize(new { ok = true, report = ControlReviewChecks.Run() }, Json);
                 // Fixture/configuration commands do not simulate user edits or successful assertions.

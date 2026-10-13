@@ -31,7 +31,7 @@ public sealed partial class GridControl
     {
         var display = new Dictionary<string, string>(_filterTexts, StringComparer.OrdinalIgnoreCase);
         foreach (var (field, values) in _valueFilters) display[field] = values.Exclude ? $"Except {values.Values.Count:N0} values" : $"{values.Values.Count:N0} values selected";
-        Renderer.FilterTexts = display; RefreshFilterPanel();
+        Renderer.FilterTexts = display; RememberFilterState(); RefreshFilterPanel();
     }
     private void CloseValueFilter() { _valueFlyout?.Hide(); _valueFlyout = null; ActiveColumnFilter = null; }
     private void ShowColumnFilter(string field, Point point)

@@ -32,7 +32,8 @@ public sealed partial class GridControl
         {
             var control = Interlocked.Exchange(ref _owner, null);
             if (control is null) return;
-            try { refresh.Dispose(); }
+            bool succeeded = false;
+            try { refresh.Dispose(); succeeded = true; }
             catch
             {
                 // Shaping rejected the staged query. Keep the filter UI paired with
@@ -55,6 +56,7 @@ public sealed partial class GridControl
                     bool rows = control._rowGeometryPending, geometry = control._geometryPending, state = control._statePending, redraw = control._redrawPending;
                     control._rowGeometryPending = control._geometryPending = control._statePending = control._redrawPending = false;
                     control._batchFilters = null; control._batchValueFilters = null; control._batchCriteria = null;
+                    if (succeeded) control.RememberFilterState();
                     control.RefreshFilterPanel();
                     if (rows) control.RebuildRows();
                     else
