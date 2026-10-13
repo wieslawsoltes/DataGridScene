@@ -72,19 +72,33 @@ public sealed class RowEditEditor : IDisposable
 /// <summary>Native editors usable by both standalone and grid-hosted row forms.</summary>
 public static class RowEditEditors
 {
+    /// <summary>Capture exact untouched values. Changed multiline text uses LF line
+    /// endings; native CR/CRLF normalization alone never creates an edit or undo item.</summary>
     public static RowEditEditor Text(RowEditEditorContext context, bool multiline = false, double minimumHeight = 32)
     {
         ArgumentNullException.ThrowIfNull(context);
         if (!double.IsFinite(minimumHeight) || minimumHeight is < 24 or > 400) throw new ArgumentOutOfRangeException(nameof(minimumHeight));
         if (multiline && context.DataType != typeof(string)) throw new ArgumentException("Multiline editors require a string field.", nameof(context));
         var initial = Format(context.InitialValue, context.Culture);
-        var text = new TextBox { Text = initial, MinWidth = 0, MinHeight = minimumHeight, FontSize = 12,
+        // Set the input mode before assigning Text. Otherwise a newly constructed
+        // single-line native TextBox can truncate an initial multiline value.
+        var text = new TextBox { AcceptsReturn = multiline,
+            TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
+            MinWidth = 0, MinHeight = minimumHeight, FontSize = 12,
             Padding = new Thickness(7, 4, 7, 4), IsReadOnly = context.IsReadOnly,
-            HorizontalAlignment = HorizontalAlignment.Stretch, AcceptsReturn = multiline,
-            TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap };
-        return new(text, () => text.Text == initial && context.InitialValue is not null ? context.InitialValue : text.Text,
-            readOnly => { if (text.IsReadOnly != readOnly) text.IsReadOnly = readOnly; });
+            HorizontalAlignment = HorizontalAlignment.Stretch };
+        text.Text = initial;
+        // Compare against the native display representation, not the input string.
+        // Uno/WinUI can normalize newlines to CR. No normalization is needed on
+        // keystrokes or redraw; perform it only once here and on explicit capture.
+        string displayed = multiline ? NormalizeLines(text.Text) : text.Text;
+        return new(text, () => {
+            string current = multiline ? NormalizeLines(text.Text) : text.Text;
+            return current == displayed && context.InitialValue is not null ? context.InitialValue : current;
+        }, readOnly => { if (text.IsReadOnly != readOnly) text.IsReadOnly = readOnly; });
     }
+    private static string NormalizeLines(string text) => text.IndexOf('\r') < 0 ? text : text.Replace("\r\n", "\n").Replace('\r', '\n');
+
     /// <summary>Load a fresh DataTemplate root. Applications supply capture and
     /// read-only adapters for their template, rather than writing the model in bindings.</summary>
     public static RowEditEditor FromTemplate(DataTemplate template, RowEditEditorContext context,

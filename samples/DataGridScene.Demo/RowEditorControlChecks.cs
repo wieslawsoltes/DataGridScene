@@ -55,7 +55,7 @@ public static class RowEditorControlChecks
             };
             using var form = new RowEditForm(new(table, new(table), 1), new() { EditorFactories = factories }); factories.Clear();
             Check(captured?.Field == "Name" && Equals(captured.InitialValue, "Original"));
-            ((TextBox)form.Editors["Name"]).Text = "Owned"; Check(form.TryCommit() && Equals(captured.InitialValue, "Original") && Equals(table[1][0], "Owned"));
+            ((TextBox)form.Editors["Name"]).Text = "Owned"; Check(form.TryCommit() && Equals(captured!.InitialValue, "Original") && Equals(table[1][0], "Owned"));
         });
         Test("hidden-field-never-runs-factory", () => {
             var table = Table(); int calls = 0;
@@ -128,8 +128,6 @@ public static class RowEditorControlChecks
             using var a = new RowEditForm(new(table, new(table), 1), options);
             using var b = new RowEditForm(new(table, new(table), 1), options);
             Check(!ReferenceEquals(a.Editors["Name"], b.Editors["Name"]) && a.Editors["Name"].DataContext is RowEditEditorContext { Field: "Name", InitialValue: "Original" });
-            // A broken template returning an existing root must not rebind the
-            // first owner's editor before Claim rejects the second form.
             var firstRoot = a.Editors["Name"]; var firstContext = firstRoot.DataContext;
             var brokenTemplate = new DataTemplate(() => firstRoot); int invalidReleases = 0;
             using var secondBuffer = new GridRowEditBuffer(table, new(table), 1);
@@ -141,6 +139,7 @@ public static class RowEditorControlChecks
             ((TextBox)a.Editors["Name"]).Text = "Template saved"; Check(a.TryCommit() && Equals(table[1][0], "Template saved"));
         });
         Test("multiline-null-empty-and-pending-value-remain-distinct", () => {
+            RowEditorTextChecks.VerifyUntouchedLineEndings();
             var table = Table(); var options = Options("Notes", c => RowEditEditors.Text(c, true, 88));
             using (var form = new RowEditForm(new(table, new(table), 1), options)) {
                 Check(((TextBox)form.Editors["Notes"]).AcceptsReturn); Check(form.TryCommit() && table[1][2] is null);

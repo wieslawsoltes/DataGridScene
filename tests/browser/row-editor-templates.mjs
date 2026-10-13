@@ -90,7 +90,7 @@ try {
     await waitFor(s => s.custom.quantityText === '3'); await text('Notes', 'One\nTwo\nThree');
     const pending = await state(); assert.deepEqual(pending.values, before.values); assert.equal(pending.custom.stagedName, 'Original');
     const saved = await save(); assert.equal(saved.values[0].values.Company, 'Template customer'); assert.equal(saved.values[0].values.Quantity, '3');
-    assert.equal(normalize(saved.values[0].values.Notes), 'One\nTwo\nThree'); assert.equal(saved.values[0].version, before.values[0].version + 1);
+    assert.equal(saved.values[0].values.Notes, 'One\nTwo\nThree'); assert.equal(saved.values[0].version, before.values[0].version + 1);
     assert.equal(saved.custom.releases, 2); assert.deepEqual(saved.custom.actions, {});
     await clickChromeAction(page, 'undo'); const undo = await waitFor(s => !s.canUndo);
     assert.deepEqual(undo.values.map(r => r.values), before.values.map(r => r.values));
@@ -100,7 +100,7 @@ try {
     await page.keyboard.insertText('Second'); const pending = await waitFor(s => normalize(value(s, 'Notes')) === 'First\nSecond');
     assert.equal(pending.open, true); assert.equal(pending.values[0].values.Notes, 'First line\nSecond line');
     await page.keyboard.press('Control+Enter'); const saved = await waitFor(s => !s.open);
-    assert.equal(saved.values[0].values.Notes, value(pending, 'Notes'), 'The commit chord must not append another newline');
+    assert.equal(saved.values[0].values.Notes, 'First\nSecond', 'Commit must preserve both lines as LF without appending a newline');
   });
   await test('row-editors.escape-discards-multiline-input-and-releases', async () => {
     await configure(true); const before = await state(); await open(); await text('Notes', 'Discard\nthis'); await page.keyboard.press('Escape');
@@ -144,8 +144,13 @@ try {
   await test('row-editors.multiline-null-and-empty-roundtrip', async () => {
     await configure(false, 20, 'en-US', true); await open(); assert.equal((await state()).fields.find(f => f.field === 'Notes').readOnly, true);
     await click('null-Notes'); assert.equal((await save()).values[0].values.Notes, '');
-    await open(); await text('Notes', 'Nonempty\nnotes'); await save();
+    await open(); await text('Notes', 'Nonempty\nnotes'); assert.equal((await save()).values[0].values.Notes, 'Nonempty\nnotes');
     await open(); await click('null-Notes'); assert.equal((await save()).values[0].values.Notes, null);
+    // Opening and updating an untouched LF model must not post native CR text or
+    // lose everything after its first line. Verify values, versions AND history.
+    await configure(); const before = await state(); await open();
+    assert.equal(normalize(value(await state(), 'Notes')), 'First line\nSecond line');
+    const unchanged = await save(); assert.deepEqual(unchanged.values, before.values); assert.equal(unchanged.canUndo, false);
   });
   await test('row-editors.localized-exact-values-stay-out-of-double-editors', async () => {
     await configure(false, 20, 'pl-PL'); const before = await state(); await open();

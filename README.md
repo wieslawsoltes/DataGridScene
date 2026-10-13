@@ -10,11 +10,11 @@ Independent .NET data-grid libraries, a reusable Uno Platform control, and a sha
 
 | Package | Responsibility |
 |---|---|
-| `DataGridScene.Core` | Typed records, criteria, sorting, grouping, summaries, version-checked edits, undo/redo, row/cell selection and identity-based snapshots. |
+| `DataGridScene.Core` | Typed records, criteria, sorting, grouping, summaries, version-checked cell/row edits, atomic staging, undo/redo, selection and identity-based snapshots. |
 | `DataGridScene.Data` | Trim-safe object projection, local and HTTP page sources, bounded asynchronous page cache, cancellation and stale-query suppression. |
 | `DataGridScene.Layout` | Variable-height row index, cached column prefix indexes, frozen panes, nested bands, workspace serialization and responsive form packing. |
 | `DataGridScene.Rendering.Skia` | Viewport-only drawing, shared paint/hit geometry, HarfBuzz text cache, badges, checkboxes, progress bars and sparklines. No Uno dependency. |
-| `DataGridScene.Controls` | Reusable Uno grid, native cell and row editors, keyboard/touch input, band manipulation, column chooser and visual filter builder. |
+| `DataGridScene.Controls` | Reusable Uno grid, native cell and customizable row editors, keyboard/touch input, band manipulation, column chooser and visual filter builder. |
 | `DataGridScene.Export` | CSV, TSV clipboard, printable HTML and typed XLSX export. No Uno dependency. |
 
 The sample references these packages; the core libraries do not reference the sample. NuGet packages are produced as CI artifacts. They have **not** been published to nuget.org.
@@ -83,6 +83,8 @@ Use `GridRowEditBuffer` independently in Core, `RowEditForm` in an application-o
 
 **Row form layout…** demonstrates responsive columns, custom captions and field order, visibility, row starts and spans. Supply `RowEditFormOptions` to `new RowEditForm(buffer, options)` or `grid.ShowRowEditAsync(recordId, fields, options)`. Editors retain their identity and unsaved text while resizing; changes inside one column-count range skip packing and placement writes. The independent `RowEditLayout` geometry is reusable without Uno. See [responsive form APIs, examples and validation](docs/row-form-layout.md).
 
+**Custom row editors…** uses per-field factories, a real DataTemplate, a composite exact-integer editor and multiline Notes in the same transactional form. Capture failures do not partially stage other fields; permission adapters run only when their state changes; acquired editors have explicit cleanup. The compact sample keeps captions beside controls, provides themed field-error borders and a validation summary, and preserves plain Enter for multiline input while Ctrl+Enter commits. See [custom editor APIs and lifetime](docs/row-editors.md). The built-in text adapter preserves untouched values exactly, including original line endings; actual multiline edits use LF. See [line-ending semantics and no-op regressions](docs/row-editor-line-endings.md).
+
 ## Native versions of every example
 
 Enable **Native cells** beside search to run every existing example with ordinary Uno cell content while preserving its data, layout, filtering, selection and history. Explicit Native controls and Adaptive cell editors templates remain available. Lightweight native displays switch to editors with F2 or a double-click; group/detail/header/summary chrome continues to use the shared Skia renderer.
@@ -91,9 +93,9 @@ Native scrolling retains collapsed pooled controls under the same visual parent,
 
 ## Validation and deployment
 
-Shared C# validation contains **385 contracts**, run on .NET and inside the actual published WebAssembly application. The browser inventory is **262 checks across 16 harnesses**, including every example in native mode, painted scrollbar visibility, native input/Tab order, transactional and responsive forms, selection, workspaces, summaries, live updates, HiDPI and touch. Six browser harnesses also execute **54 individual Uno API contracts**. Tests retain JSON reports, screenshots and Playwright traces. Consult the exact commit's Actions result: inventory counts alone are not proof of success.
+Shared C# validation contains **395 contracts**, run on .NET and inside the actual published WebAssembly application. The browser inventory is **278 interaction checks across 17 harnesses**, including every example in native mode, painted scrollbar visibility, native input/Tab order, transactional/responsive/custom forms, selection, workspaces, summaries, live updates, HiDPI and touch. Seven harnesses also execute **70 individual Uno API contracts**. The same **14-step deployment smoke verifier** is the eighteenth test command and is reported separately. Tests retain JSON reports, screenshots and Playwright traces. Consult the exact commit's Actions result: inventory counts alone are not proof of success.
 
-CI builds the desktop target and all six packages. Only successful **main** validation triggers Pages deployment, using that exact run's artifact. Public verification checks `build.json`, actual editing/undo, bands, summaries, live updates and checked filters. Form layout, row editing, native modes/selectors/controls/input/Tab order and painted-scrollbar suites also run on the public URL.
+CI builds the desktop target and all six packages. Only successful **main** validation triggers Pages deployment, using that exact run's artifact. Public verification checks `build.json`, actual editing/undo, bands, summaries, live updates, checked filters and theme transitions after their native controls finish layout. Custom editors, form layout, row editing, native modes/selectors/controls/input/Tab order and painted-scrollbar suites also run on the public URL. A loopback CI-artifact smoke result does not establish public deployment success.
 
 The renderer draws into Uno's Skia canvas. Hardware acceleration depends on host/driver. Hosted browser tests use ANGLE/SwiftShader: their timings are **software-backend correctness evidence, not hardware GPU benchmarks**. The sample shows CPU paint time, not end-to-end frame or input latency.
 
