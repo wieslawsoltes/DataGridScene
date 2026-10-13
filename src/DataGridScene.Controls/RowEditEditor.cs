@@ -94,6 +94,10 @@ public static class RowEditEditors
         ArgumentNullException.ThrowIfNull(template); ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(readValue); ArgumentNullException.ThrowIfNull(setReadOnly);
         if (template.LoadContent() is not FrameworkElement element) throw new ArgumentException("A row editor template must produce a FrameworkElement.", nameof(template));
+        // Check before assigning DataContext: a faulty template factory can return
+        // another form's root. Reject it without changing that owner's bindings.
+        if (element.IsLoaded || VisualTreeHelper.GetParent(element) is not null)
+            throw new InvalidOperationException("A row editor template must produce a new, unparented element.");
         element.DataContext = context;
         return new(element, () => readValue(element), readOnly => setReadOnly(element, readOnly), () => release?.Invoke(element));
     }

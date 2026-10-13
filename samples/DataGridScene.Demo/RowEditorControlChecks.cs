@@ -128,6 +128,16 @@ public static class RowEditorControlChecks
             using var a = new RowEditForm(new(table, new(table), 1), options);
             using var b = new RowEditForm(new(table, new(table), 1), options);
             Check(!ReferenceEquals(a.Editors["Name"], b.Editors["Name"]) && a.Editors["Name"].DataContext is RowEditEditorContext { Field: "Name", InitialValue: "Original" });
+            // A broken template returning an existing root must not rebind the
+            // first owner's editor before Claim rejects the second form.
+            var firstRoot = a.Editors["Name"]; var firstContext = firstRoot.DataContext;
+            var brokenTemplate = new DataTemplate(() => firstRoot); int invalidReleases = 0;
+            using var secondBuffer = new GridRowEditBuffer(table, new(table), 1);
+            Reject<InvalidOperationException>(() => {
+                using var rejected = new RowEditForm(secondBuffer, Options("Name", c =>
+                    RowEditEditors.FromTemplate(brokenTemplate, c, _ => "Wrong owner", (_, _) => { }, _ => invalidReleases++)));
+            });
+            Check(ReferenceEquals(firstRoot.DataContext, firstContext) && secondBuffer.IsActive && invalidReleases == 0);
             ((TextBox)a.Editors["Name"]).Text = "Template saved"; Check(a.TryCommit() && Equals(table[1][0], "Template saved"));
         });
         Test("multiline-null-empty-and-pending-value-remain-distinct", () => {
