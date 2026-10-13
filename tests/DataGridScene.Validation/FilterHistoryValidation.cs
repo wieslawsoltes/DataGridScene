@@ -91,11 +91,13 @@ public static class FilterHistoryValidation
             Check(history.Entries.Count == 4 && !history.Entries[0].State.EffectiveFilter!.Compile(schema)(new GridRecord(1, new object?[4])));
         });
         Test("floating-point-bits-decimal-scale-and-offsets-are-not-conflated", () => {
-            var schema = new GridSchema([new("Value", typeof(object))]); var history = new GridFilterHistory(schema);
+            var schema = new GridSchema([new("Value", typeof(object))]); var history = new GridFilterHistory(schema, 20);
             foreach (object value in new object[] { 0d, -0d, double.Epsilon, 1.0m, 1.00m, 1L, 1d,
-                DateTimeOffset.Parse("2026-01-01T00:00:00+00:00"), DateTimeOffset.Parse("2026-01-01T02:00:00+02:00") })
+                DateTimeOffset.Parse("2026-01-01T00:00:00+00:00"), DateTimeOffset.Parse("2026-01-01T02:00:00+02:00"),
+                new TimeOnly(12, 30, 5).Add(TimeSpan.FromTicks(1)), new TimeOnly(12, 30, 5).Add(TimeSpan.FromTicks(2)),
+                TimeSpan.FromTicks(1), TimeSpan.FromTicks(2), new DateOnly(2026, 10, 13), new DateOnly(2026, 10, 14) })
                 history.Remember(GridFilterState.Capture(schema, new FieldFilter("Value", FilterOperator.Equal, value)));
-            Check(history.Entries.Count == 9);
+            Check(history.Entries.Count == 15);
         });
         Test("capture-does-not-read-records-compile-predicates-or-compare-values", () => {
             int callbacks = 0;

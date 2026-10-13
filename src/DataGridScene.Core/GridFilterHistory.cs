@@ -201,7 +201,10 @@ public sealed class GridFilterState
                 case JsonElement json:
                     if (json.ValueKind is JsonValueKind.Array or JsonValueKind.Object or JsonValueKind.Undefined) throw new NotSupportedException("History requires scalar JSON literals.");
                     Token(json.GetRawText()); return json.Clone();
-                case char or bool or byte or sbyte or short or ushort or int or uint or long or ulong or Guid or TimeSpan or DateOnly or TimeOnly or Enum:
+                case TimeOnly time: Token(time.Ticks.ToString(CultureInfo.InvariantCulture)); break;
+                case DateOnly date: Token(date.DayNumber.ToString(CultureInfo.InvariantCulture)); break;
+                case TimeSpan duration: Token(duration.Ticks.ToString(CultureInfo.InvariantCulture)); break;
+                case char or bool or byte or sbyte or short or ushort or int or uint or long or ulong or Guid or Enum:
                     Token(Convert.ToString(value, CultureInfo.InvariantCulture) ?? ""); break;
                 default: throw new NotSupportedException("Mutable or application-defined literal values cannot be retained in filter history.");
             }
