@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:browser": "node tests/browser/row-form-layout.mjs && node tests/browser/row-editing.mjs && node tests/browser/native-tab-order.mjs && node tests/browser/native-cells.mjs && node tests/browser/native-modes.mjs && node tests/browser/native-input-regressions.mjs && node tests/browser/scrollbars.mjs && node tests/browser/navigation-viewport.mjs && node tests/browser/template-selectors.mjs && node tests/browser/run.mjs && node tests/browser/workspace.mjs && node tests/browser/summaries.mjs && node tests/browser/performance.mjs && node tests/browser/review.mjs && node tests/browser/value-filters.mjs && node tests/browser/chrome.mjs",
+    "test:browser": "node scripts/run-browser-suites.mjs",
+    "test:runner": "node --test tests/browser/suite-runner.test.mjs",
     "prepare:site": "node scripts/prepare-site.mjs"
   },
   "devDependencies": {

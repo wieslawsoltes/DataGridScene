@@ -15,7 +15,7 @@ public sealed class GridRowEditBuffer : IDisposable
     private readonly Func<bool> _canEdit;
     private readonly Dictionary<string, int> _indices = new(StringComparer.OrdinalIgnoreCase);
     private readonly object?[] _original, _values;
-    private bool _committing;
+    private bool _committing, _staging;
     public long RecordId => _record.Id;
     public int OriginalVersion => _version;
     public CultureInfo Culture => _table.Schema.Culture;
@@ -52,14 +52,45 @@ public sealed class GridRowEditBuffer : IDisposable
     public void SetValue(string field, object? value)
     {
         int index = Index(field);
-        if (_committing) throw new InvalidOperationException("A row commit is in progress.");
+        if (_committing || _staging) throw new InvalidOperationException("A row operation is in progress.");
         if (!CanEdit || Columns[index].IsReadOnly) throw new InvalidOperationException("This field is read-only.");
         _values[index] = value;
         Error = null; Errors = Array.Empty<GridValidationError>();
     }
+    /// <summary>Stage a field batch atomically, without conversion or model writes.
+    /// Unknown/duplicate/read-only fields, permission changes or enumeration failures
+    /// leave every staged value and existing error unchanged. The input is consumed
+    /// once and bounded by this buffer's field count. Nested mutation is rejected.</summary>
+    public void SetValues(IEnumerable<KeyValuePair<string, object?>> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        ObjectDisposedException.ThrowIf(!IsActive, this);
+        if (_committing || _staging) throw new InvalidOperationException("A row operation is in progress.");
+        _staging = true;
+        try
+        {
+            if (!CanEdit) throw new InvalidOperationException("This row is read-only.");
+            var staged = new List<(int Index, object? Value)>();
+            var seen = new HashSet<int>();
+            foreach (var item in values)
+            {
+                if (staged.Count == Columns.Count) throw new ArgumentException("Too many staged fields.", nameof(values));
+                int index = Index(item.Key);
+                if (!seen.Add(index)) throw new ArgumentException("Staged fields must be unique.", nameof(values));
+                if (Columns[index].IsReadOnly) throw new InvalidOperationException($"Field {Columns[index].Field} is read-only.");
+                staged.Add((index, item.Value));
+            }
+            // Enumeration may run application code. Recheck mutable permissions
+            // before the first write, not separately while applying each field.
+            if (!CanEdit || staged.Any(item => Columns[item.Index].IsReadOnly)) throw new InvalidOperationException("This row or a staged field is read-only.");
+            foreach (var item in staged) _values[item.Index] = item.Value;
+            if (staged.Count > 0) { Error = null; Errors = Array.Empty<GridValidationError>(); }
+        }
+        finally { _staging = false; }
+    }
     public bool TryCommit()
     {
-        if (_committing) return false;
+        if (_committing || _staging) return false;
         try
         {
             ObjectDisposedException.ThrowIf(!IsActive, this);
@@ -88,7 +119,7 @@ public sealed class GridRowEditBuffer : IDisposable
     }
     public void Dispose()
     {
-        if (_committing) throw new InvalidOperationException("A row commit is in progress.");
+        if (_committing || _staging) throw new InvalidOperationException("A row operation is in progress.");
         IsActive = false; Array.Clear(_original); Array.Clear(_values);
         Error = null; Errors = Array.Empty<GridValidationError>();
     }

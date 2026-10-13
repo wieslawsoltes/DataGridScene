@@ -56,9 +56,9 @@ jobs:
           key: nuget-desktop-${{ runner.os }}-uno-6.7.30-v2
       - name: Build shared Uno desktop application
         run: dotnet build samples/DataGridScene.Demo -c Release -f net10.0-desktop -p:DataGridSceneTarget=net10.0-desktop
-  browser:
+  browser-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -67,33 +67,84 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Validate exhaustive suite partition and failure propagation
+        run: npm run test:runner
       - uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
           key: nuget-browser-${{ runner.os }}-uno-6.7.30-v2
       - name: Install WASM toolchain
         run: dotnet workload install wasm-tools --skip-manifest-update
-      - name: Publish actual Uno WebAssembly application
+      - name: Publish actual Uno WebAssembly application once
         run: dotnet publish samples/DataGridScene.Demo -c Release -f net10.0-browserwasm -p:DataGridSceneTarget=net10.0-browserwasm -p:WasmShellWebAppBasePath=/DataGridScene/ -o artifacts/browser
       - name: Prepare static Pages-compatible site
         run: node scripts/prepare-site.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browser-application
+          path: artifacts/site/
+          if-no-files-found: error
+      - name: Package reusable Uno control library
+        run: dotnet pack src/DataGridScene.Controls -c Release -o artifacts/packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uno-control-package
+          path: artifacts/packages/
+          if-no-files-found: error
+  browser-tests:
+    needs: browser-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [forms, native, viewport, features]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download the identical build for every isolated worker
+        uses: actions/download-artifact@v4
+        with:
+          name: browser-application
+          path: artifacts/site
       - name: Install browser test harness
         run: npm install --ignore-scripts && npx playwright install --with-deps chromium
       - name: Test actual WASM runtime and browser interactions
-        run: npm run test:browser
-      - name: Package reusable Uno control library
-        run: dotnet pack src/DataGridScene.Controls -c Release -o artifacts/packages
+        env:
+          SUITE_GROUP: ${{ matrix.group }}
+        run: node scripts/run-browser-suites.mjs "$SUITE_GROUP"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-validation-${{ matrix.group }}
+          path: artifacts/browser-validation/
+          if-no-files-found: error
+  browser:
+    if: always()
+    needs: [browser-build, browser-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gather independent reports without overwriting suite directories
+        uses: actions/download-artifact@v4
+        with:
+          pattern: browser-validation-*
+          path: artifacts/browser-validation
+          merge-multiple: true
+      - name: Require the build and every browser worker to succeed
+        env:
+          BUILD_RESULT: ${{ needs.browser-build.result }}
+          TEST_RESULT: ${{ needs.browser-tests.result }}
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$TEST_RESULT" = success
+          for group in forms native viewport features; do
+            test -f "artifacts/browser-validation/runner-$group.json"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: browser-validation
           path: artifacts/browser-validation/
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: browser-application
-          path: artifacts/site/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: uno-control-package
-          path: artifacts/packages/
+          if-no-files-found: error

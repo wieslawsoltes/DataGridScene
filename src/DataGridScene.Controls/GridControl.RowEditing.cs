@@ -46,7 +46,9 @@ public sealed partial class GridControl
         void RootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => UpdateFormSize();
         dialog.GettingFocus += (_, args) => PrepareNativeKeyboardHost(dialog, args);
         dialog.PrimaryButtonClick += (_, args) => { saved = form.TryCommit(); args.Cancel = !saved; };
-        form.KeyDown += (_, args) =>
+        // Preview intercepts the commit chord before a multiline TextBox inserts a
+        // newline or a composite child consumes Enter. Plain Enter remains native.
+        form.PreviewKeyDown += (_, args) =>
         {
             if (args.Key != VirtualKey.Enter || !Down(VirtualKey.Control)) return;
             args.Handled = true;

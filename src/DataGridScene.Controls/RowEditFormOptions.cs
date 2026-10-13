@@ -16,12 +16,17 @@ public sealed record RowEditFormOptions
     public double MaximumFieldHeight { get; init; } = 400;
     public RowEditCaptionPlacement CaptionPlacement { get; init; } = RowEditCaptionPlacement.Above;
     public double CaptionWidth { get; init; } = 104;
+    public bool ShowInstructions { get; init; } = true;
     public IReadOnlyList<RowEditFieldLayout> Fields { get; init; } = Array.Empty<RowEditFieldLayout>();
+    /// <summary>Per-field factories, called once per visible field. Null results use
+    /// the default editor. Unknown/duplicate names and null delegates are rejected.</summary>
+    public IReadOnlyDictionary<string, Func<RowEditEditorContext, RowEditEditor?>> EditorFactories { get; init; }
+        = new Dictionary<string, Func<RowEditEditorContext, RowEditEditor?>>();
 
     internal void Validate()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(Title);
-        ArgumentNullException.ThrowIfNull(Fields);
+        ArgumentNullException.ThrowIfNull(Fields); ArgumentNullException.ThrowIfNull(EditorFactories);
         if (!Enum.IsDefined(CaptionPlacement)) throw new ArgumentOutOfRangeException(nameof(CaptionPlacement));
         if (!double.IsFinite(MaximumWidth) || MaximumWidth is < 240 or > 2048) throw new ArgumentOutOfRangeException(nameof(MaximumWidth));
         if (!double.IsFinite(MaximumFieldHeight) || MaximumFieldHeight is < 80 or > 1200) throw new ArgumentOutOfRangeException(nameof(MaximumFieldHeight));
