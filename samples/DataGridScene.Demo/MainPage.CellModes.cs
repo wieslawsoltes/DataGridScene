@@ -25,6 +25,7 @@ public sealed partial class MainPage
                 ? GridCellRenderingMode.NativeControls : GridCellRenderingMode.Skia);
             _nativeModeToggle.IsChecked = DataGrid.CellRenderingMode == GridCellRenderingMode.NativeControls;
         };
+        InitializeRowEditUI();
     }
     public object NativeScrollingSnapshot() => new
     {

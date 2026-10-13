@@ -2,24 +2,27 @@
 
 ## Shared managed and geometry contracts
 
-`tests/DataGridScene.Tests` runs the 351-contract `NativeCellValidationSuite` and eight
-`NativeTabOrderValidation` contracts. The combined 359-contract report is written to
-`artifacts/core-validation.json`; any failed assertion causes a nonzero exit.
+`tests/DataGridScene.Tests` runs the 351-contract `NativeCellValidationSuite`, eight
+`NativeTabOrderValidation` contracts, and sixteen `RowEditValidation` contracts. The
+combined 375-contract report is written to `artifacts/core-validation.json`; any failed
+assertion causes a nonzero exit.
 
 The same contracts run inside the actual published Uno WebAssembly application: the
-baseline browser harness invokes the 351-contract suite and the native Tab-order harness
-invokes the eight additional geometry contracts. These exercise schema, shaping,
-selection, version-checked edits, clipboard/export, paging, row-height indexes, bands,
-workspace state, native buffers and viewport-local focus ranks.
+baseline harness invokes the 351-contract suite, the native Tab-order harness invokes
+the eight geometry contracts, and the row-form harness invokes the sixteen row contracts.
+These exercise schema, shaping, selection, version-checked edits, clipboard/export,
+paging, row-height indexes, bands, workspace state, native buffers, viewport-local focus
+ranks, complete-row validation and one-transaction row history.
 
 ## Real browser interactions
 
-`npm run test:browser` runs all fourteen harnesses against the actual WASM sample.
+`npm run test:browser` runs all fifteen harnesses against the actual WASM sample.
 Diagnostic commands supply fixtures/configuration and read snapshots; user interactions
 use real pointer, keyboard, clipboard and native text input.
 
 | Harness | Browser checks | Additional embedded contracts / focus |
 |---|---:|---|
+| `row-editing.mjs` | 17 | Sixteen shared row contracts and six real Uno API contracts; staged Skia/native forms, one-step undo/redo, exact values, nulls, validation, conflicts and keyboard input. |
 | `native-tab-order.mjs` | 15 | Eight shared geometry contracts; actual Tab/Shift+Tab, recycled hosts, composite controls, browser keyboard handoff, accessibility entry and external focus. |
 | `native-cells.mjs` | 24 | Eleven real Uno API contracts; text, number, choice, date, action and slider controls; validation, identity and undo. |
 | `native-modes.mjs` | 29 | Nine real Uno API contracts; every example in both modes, preserved state, native input and retained-tree scrolling. |
@@ -35,8 +38,8 @@ use real pointer, keyboard, clipboard and native text input.
 | `value-filters.mjs` | 13 | Checked inclusion/exclusion, search, persistence and virtualized 100,000-record distinct-value filtering. |
 | `chrome.mjs` | 18 | Twelve real Uno API contracts; command ribbon, themes, full-width view and filter-panel interactions. |
 
-The inventory is **233 browser checks**, **359 shared managed/geometry contracts**, and
-**42 individual real Uno control API contracts**. Embedded invocations are included in
+The inventory is **250 browser checks**, **375 shared managed/geometry contracts**, and
+**48 individual real Uno control API contracts**. Embedded invocations are included in
 the browser-check count; they are not additional independent browser scenarios. Counts
 alone do not show whether any particular run passed.
 
@@ -64,10 +67,10 @@ exact successful run's browser artifact instead of rebuilding different sources.
 Verification compares the public `build.json` commit and exercises actual editing/undo,
 bands, group summaries, the summary editor, live updates and checked filters.
 
-The public URL also runs the complete native Tab-order, template-selector, native-mode,
-native-cell, native-input and painted-scrollbar harnesses. Navigation commands are
-clicked only after their centers lie inside the actual sidebar viewport. Reports and
-screenshots are retained in `deployed-site-verification`.
+The public URL also runs the complete row-form, native Tab-order, template-selector,
+native-mode, native-cell, native-input and painted-scrollbar harnesses. Navigation
+commands and row-form fields are clicked only after their centers lie inside their
+actual scroll viewports. Reports and screenshots are retained in `deployed-site-verification`.
 
 Failed verification does not undo publication. It marks the deployment unsuccessful
 and must be investigated before claiming the public app is verified.
@@ -89,6 +92,12 @@ child controls with reversed TabIndex values and an optional disabled child; act
 browser keys must honor those values. Browser-handoff checks retain the accessibility
 entry and test both native text input and external DOM focus ownership.
 
+Row-form snapshots similarly read existing native controls, error state and geometry.
+They do not update, validate, focus or scroll the form. Decimal, Int64 and timestamp
+assertions use exact invariant string snapshots rather than lossy JavaScript numbers.
+Fixture mutations deliberately exercise version/identity conflicts and table replacement;
+all row-form editing, Update/Cancel, Tab/Shift+Tab, Ctrl+Enter and Escape use real input.
+
 ## Offline compiler and performance checks
 
 `scripts/validate-offline.py` uses the repository's Offline validation kit to directly
@@ -104,8 +113,11 @@ storage, randomized agreement with full refreshes and results after undo.
 Stress checks include 100,000 materialized records, one million indexed row heights,
 10,000 indexed columns/bands and compressed selections. Native scrolling checks count
 control creation, reparenting, binding, dimension, translation and tab-rank writes.
+The row form snapshots only one selected record and creates its field controls only
+while open. Its 100,000-row check verifies no extra native grid-tree realization.
 These are bounded-work checks, not universal throughput guarantees. See
-[performance](performance.md), [review findings](review.md), and [native Tab order](native-tab-order.md).
+[performance](performance.md), [review findings](review.md), [native Tab order](native-tab-order.md)
+and [row editing](row-editing.md).
 
 Hosted Chromium uses ANGLE/SwiftShader. Hardware GPU throughput, power, presentation
 latency, complete multilingual fallback, all DPI/driver cases and pixel-identical

@@ -59,7 +59,7 @@ public sealed partial class MainPage
     }
     private void ApplyLiveTick()
     {
-        if (DataGrid.IsEditing || DataGrid.IsReadOnly || DataGrid.Table is null) return;
+        if (DataGrid.IsEditing || DataGrid.ActiveRowEditForm is not null || DataGrid.IsReadOnly || DataGrid.Table is null) return;
         _liveTick++;
         var edits = DataGrid.View!.OrderedRecords.Take(100).Select(record =>
             new CellEdit(record.Id, "Company", $"Live order {record.Id} · tick {_liveTick}")).ToArray();
