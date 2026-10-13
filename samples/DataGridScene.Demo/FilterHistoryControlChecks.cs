@@ -48,12 +48,29 @@ internal static class FilterHistoryControlChecks
             var entries = grid.RecentFilters; long revision = grid.FilterHistoryRevision, built = grid.FilterPanel.HistoryBuildCount;
             for (int i = 0; i < 100; i++) { grid.Table!.Apply([new(1, "Amount", i)]); grid.Selection.Select(grid.View!, new(1, "Name")); }
             Check(ReferenceEquals(entries, grid.RecentFilters) && revision == grid.FilterHistoryRevision && built == grid.FilterPanel.HistoryBuildCount);
+            long display = grid.FilterDisplayRefreshCount; var displayState = grid.Renderer.FilterTexts;
+            for (int i = 0; i < 20; i++)
+            {
+                using (grid.BeginDataUpdate())
+                {
+                    grid.Table!.Apply([new(1, "Amount", i)]);
+                    using (grid.BeginDataUpdate()) grid.Selection.Select(grid.View!, new(1, "Name"));
+                }
+            }
+            Check(ReferenceEquals(entries, grid.RecentFilters) && revision == grid.FilterHistoryRevision && built == grid.FilterPanel.HistoryBuildCount);
+            Check(display == grid.FilterDisplayRefreshCount && ReferenceEquals(displayState, grid.Renderer.FilterTexts));
         });
         Test("clear-history-does-not-clear-active-filter-or-reinsert-on-enable", () => {
             using var grid = new GridControl { Table = ValidationSuite.Fixture() }; grid.SetColumnFilter("Name", "Alpha");
             grid.ClearFilterHistory(); long refresh = grid.View!.RefreshCount; grid.IsFilterEnabled = false; grid.IsFilterEnabled = true;
             Check(grid.RecentFilters.Count == 0 && grid.FilterTexts["Name"] == "Alpha" && grid.View.Rows.Count == 1 && grid.View.RefreshCount == refresh + 2);
             Check(!((Microsoft.UI.Xaml.Controls.Button)grid.FilterPanel.Actions["filter-panel-history"]).IsEnabled);
+            long revision = grid.FilterHistoryRevision, display = grid.FilterDisplayRefreshCount;
+            using (grid.BeginDataUpdate()) { grid.Table!.Apply([new(1, "Amount", 13)]); grid.SetSearch("Alpha"); grid.SortColumn("Amount", SortDirection.Descending); }
+            using (grid.BeginDataUpdate()) { grid.IsFilterEnabled = false; grid.IsFilterEnabled = true; }
+            using (grid.BeginDataUpdate()) { }
+            Check(grid.RecentFilters.Count == 0 && grid.FilterHistoryRevision == revision && grid.FilterDisplayRefreshCount == display);
+            Check(grid.FilterPanel.IsFilterEnabled && grid.FilterPanel.Items.Count == 1 && grid.View.Rows.Count == 1);
         });
         Test("clear-conditions-keeps-history-but-replacement-table-does-not", () => {
             using var grid = new GridControl { Table = ValidationSuite.Fixture() }; grid.SetColumnFilter("Name", "Alpha"); long id = grid.RecentFilters[0].Id;
@@ -63,19 +80,28 @@ internal static class FilterHistoryControlChecks
         });
         Test("batch-remembers-only-successful-final-conditions", () => {
             using var grid = new GridControl { Table = ValidationSuite.Fixture() };
+            long display = grid.FilterDisplayRefreshCount; var originalDisplay = grid.Renderer.FilterTexts;
             using (grid.BeginDataUpdate())
             {
                 grid.SetColumnFilter("Name", "Alpha"); using (grid.BeginDataUpdate()) grid.SetColumnFilter("Region", "West");
                 grid.IsFilterEnabled = false; Check(grid.RecentFilters.Count == 0);
+                Check(grid.FilterDisplayRefreshCount == display && ReferenceEquals(originalDisplay, grid.Renderer.FilterTexts));
             }
             Check(grid.RecentFilters.Count == 1 && grid.RecentFilters[0].State.TextFilters.Count == 2 && !grid.IsFilterEnabled);
+            Check(grid.FilterDisplayRefreshCount == display + 1 && grid.Renderer.FilterTexts["Name"] == "Alpha" && grid.Renderer.FilterTexts["Region"] == "West");
+            Check(!grid.FilterPanel.IsFilterEnabled && grid.FilterPanel.Items.Count == 2);
         });
         Test("failed-batch-does-not-retain-intermediate-or-rejected-state", () => {
             bool fail = false; var table = new GridTable(new GridSchema([new("Name", typeof(string)), new("Calc", typeof(int)) { ValueGetter = _ => fail ? throw new InvalidOperationException("Expected getter failure") : 1 }]));
             table.Add(new(1, new object?[] { "A", null })); using var grid = new GridControl { Table = table }; grid.SetColumnFilter("Name", "A");
             var before = grid.RecentFilters; var query = grid.View!.Query; fail = true;
-            Reject<InvalidOperationException>(() => { using (grid.BeginDataUpdate()) grid.SetCriteria("[Calc] > 0"); });
+            long display = grid.FilterDisplayRefreshCount;
+            Reject<InvalidOperationException>(() => { using (grid.BeginDataUpdate()) { grid.SetColumnFilter("Name", "B"); grid.SetCriteria("[Calc] > 0"); } });
             Check(ReferenceEquals(before, grid.RecentFilters) && ReferenceEquals(query, grid.View.Query) && grid.FilterPanel.Items.Count == 1 && grid.FilterTexts["Name"] == "A");
+            Check(grid.FilterDisplayRefreshCount == display + 1 && grid.Renderer.FilterTexts["Name"] == "A");
+            grid.ClearFilterHistory(); display = grid.FilterDisplayRefreshCount;
+            Reject<InvalidOperationException>(() => { using (grid.BeginDataUpdate()) grid.SetCriteria("[Calc] > 0"); });
+            Check(grid.RecentFilters.Count == 0 && grid.FilterDisplayRefreshCount == display + 1 && grid.FilterTexts["Name"] == "A");
         });
         Test("failed-replay-keeps-query-metadata-history-order-and-selection", () => {
             bool fail = false; var table = new GridTable(new GridSchema([new("Name", typeof(string)), new("Calc", typeof(int)) { ValueGetter = _ => fail ? throw new InvalidOperationException("Expected getter failure") : 1 }]));

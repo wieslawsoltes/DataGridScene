@@ -59,7 +59,7 @@ public sealed partial class GridControl
     // Called after filter mutations (not during paint, hover, selection or value-only updates).
     private void RefreshFilterPanel()
     {
-        if (_dataUpdateDepth > 0) return;
+        if (_dataUpdateDepth > 0) { _filterPanelPending = true; return; }
         if (Table is null || View is null) { FilterPanel.SetState([], true); FilterPanel.SetExpression(""); return; }
         var tokens = new List<FilterPanelToken>();
         if (_criteria is not null) tokens.Add(new("criteria", "Criteria", GridFilterText.Describe(_criteria, Table.Schema)));
