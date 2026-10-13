@@ -5,6 +5,7 @@ import path from 'node:path';
 import { startServer } from './server.mjs';
 import { clickNavigationAction } from './navigation-actions.mjs';
 import { clickChromeAction } from './chrome-actions.mjs';
+import { replaceRowInput, waitForRowInput, rowInputTrace } from './row-input-actions.mjs';
 
 const out = path.resolve(process.env.BROWSER_RESULTS ?? 'artifacts/browser-validation', 'row-editors');
 await mkdir(out, { recursive: true });
@@ -26,12 +27,14 @@ async function waitFor(predicate) {
 async function configure(native = false, count = 20, culture = 'en-US', nullNotes = false) {
   if ((await state()).open) { await page.keyboard.press('Escape'); await waitFor(s => !s.open); }
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const result = await page.evaluate(([n, c, l, nil]) => JSON.parse(editorBridge.ConfigureCustomRowEditorFixture(n, c, l, nil)), [native, count, culture, nullNotes]);
-  assert.equal(result.ok, true, result.error); await settle();
+  const raw = await page.evaluate(([n, c, l, nil]) => editorBridge.ConfigureCustomRowEditorFixture(n, c, l, nil), [native, count, culture, nullNotes]);
+  assert.equal(typeof raw, 'string', 'Fixture export must return JSON: ' + String(raw));
+  const result = JSON.parse(raw);
+  assert.equal(result?.ok, true, 'Custom fixture failed: ' + raw); await settle();
 }
 async function mutate(action, custom = false) {
-  const r = await page.evaluate(([a, c]) => JSON.parse(c ? editorBridge.ChangeCustomRowEditorFixture(a) : editorBridge.ChangeRowEditFixture(a)), [action, custom]);
-  assert.equal(r.ok, true, r.error); await settle();
+  const raw = await page.evaluate(([a, c]) => c ? editorBridge.ChangeCustomRowEditorFixture(a) : editorBridge.ChangeRowEditFixture(a), [action, custom]);
+  const r = JSON.parse(raw); assert.equal(r?.ok, true, 'Fixture mutation failed: ' + raw); await settle();
 }
 async function open() {
   await clickNavigationAction(page, 'edit-row-custom');
@@ -53,11 +56,8 @@ async function click(name) {
 const value = (s, field) => field === 'Quantity' ? s.custom.quantityText : s.fields.find(f => f.field === field)?.text;
 const normalize = text => text.replace(/\r\n?/g, '\n');
 async function text(field, input) {
-  await click(field === 'Quantity' ? 'quantity-input' : 'field-' + field);
-  await page.waitForFunction(() => document.activeElement?.id === 'uno-input');
-  await page.keyboard.press('Control+A'); await page.keyboard.press('Backspace');
-  if (input.length) await page.keyboard.insertText(input);
-  await waitFor(s => typeof value(s, field) === 'string' && normalize(value(s, field)) === normalize(input));
+  await replaceRowInput(page, field, input, () => click(field === 'Quantity' ? 'quantity-input' : 'field-' + field));
+  assert.equal(normalize(value(await state(), field)), normalize(input));
 }
 async function save() { await click('update'); return waitFor(s => !s.open); }
 async function cancel() { await click('cancel'); return waitFor(s => !s.open); }
@@ -66,7 +66,7 @@ async function test(name, run) {
   const start = Date.now();
   try { await run(); results.push({ name, passed: true, milliseconds: Date.now() - start }); console.log('PASS', name); }
   catch (error) { results.push({ name, passed: false, error: String(error.stack ?? error) }); console.error('FAIL', name, error);
-    await writeFile(path.join(out, name + '.json'), JSON.stringify(await state(), null, 2)).catch(() => {});
+    await writeFile(path.join(out, name + '.json'), JSON.stringify({ state: await state(), inputSteps: rowInputTrace }, null, 2)).catch(() => {});
     await page.screenshot({ path: path.join(out, name + '.png') }).catch(() => {}); }
 }
 try {
@@ -96,7 +96,10 @@ try {
     assert.deepEqual(undo.values.map(r => r.values), before.values.map(r => r.values));
   });
   await test('row-editors.enter-inserts-newline-ctrl-enter-does-not', async () => {
-    await configure(); await open(); await text('Notes', 'First'); await page.keyboard.press('End'); await page.keyboard.press('Enter');
+    await configure(); await open(); await text('Notes', 'First'); await page.keyboard.press('End');
+    await waitForRowInput(page, 'Notes', 'caret-at-end', s => s.native.selectionStart === s.native.text.length && s.native.selectionLength === 0 && s.dom.selectionStart === s.dom.value.length);
+    await page.keyboard.press('Enter');
+    await waitForRowInput(page, 'Notes', 'native-newline', s => normalize(s.native.text) === 'First\n');
     await page.keyboard.insertText('Second'); const pending = await waitFor(s => normalize(value(s, 'Notes')) === 'First\nSecond');
     assert.equal(pending.open, true); assert.equal(pending.values[0].values.Notes, 'First line\nSecond line');
     await page.keyboard.press('Control+Enter'); const saved = await waitFor(s => !s.open);
@@ -146,8 +149,6 @@ try {
     await click('null-Notes'); assert.equal((await save()).values[0].values.Notes, '');
     await open(); await text('Notes', 'Nonempty\nnotes'); assert.equal((await save()).values[0].values.Notes, 'Nonempty\nnotes');
     await open(); await click('null-Notes'); assert.equal((await save()).values[0].values.Notes, null);
-    // Opening and updating an untouched LF model must not post native CR text or
-    // lose everything after its first line. Verify values, versions AND history.
     await configure(); const before = await state(); await open();
     assert.equal(normalize(value(await state(), 'Notes')), 'First line\nSecond line');
     const unchanged = await save(); assert.deepEqual(unchanged.values, before.values); assert.equal(unchanged.canUndo, false);
@@ -167,10 +168,16 @@ try {
     await configure(true, 100000); const before = await state(); const opened = await open();
     assert.equal(opened.custom.creations, 8); assert.equal(opened.custom.factoryCalls, 3);
     for (const key of ['createdCellControlCount', 'cellControlTreeAttachCount', 'cellControlTreeDetachCount', 'rowGeometryBuildCount']) assert.equal(opened[key], before[key], key);
-    await text('Company', 'One custom row'); await text('Notes', 'No per-record\nform creation');
+    // Consecutive focus/selection/native-input transitions on the same large
+    // dataset, without resetting the form or writing values through a command.
+    for (let i = 0; i < 4; i++) {
+      await text('Company', i === 3 ? 'One custom row' : 'Intermediate customer ' + i);
+      await text('Notes', i === 3 ? 'No per-record\nform creation' : 'Intermediate note\n' + i);
+    }
     await page.screenshot({ path: path.join(out, 'custom-editors-light.png') }); const after = await save();
-    assert.equal(after.values[0].values.Company, 'One custom row'); assert.equal(after.values[1].values.Company, 'Row 1');
-    assert.ok(after.realizedCellControlCount < 300);
+    assert.equal(after.values[0].values.Company, 'One custom row'); assert.equal(after.values[0].values.Notes, 'No per-record\nform creation');
+    assert.equal(after.values[1].values.Company, 'Row 1'); assert.equal(after.values[0].version, before.values[0].version + 1);
+    assert.ok(after.realizedCellControlCount < 300); assert.equal(after.custom.factoryCalls, 3);
     await writeFile(path.join(out, 'bounded-editor-work.json'), JSON.stringify({ before, opened, after }, null, 2));
   });
   await test('row-editors.ribbon-tab-transitions-wait-for-real-native-layout', async () => {
@@ -190,6 +197,7 @@ finally {
   const report = { commit: process.env.GITHUB_SHA ?? null, passed: results.length === 16 && results.every(r => r.passed), passedCount: results.filter(r => r.passed).length,
     results, errors, browser: browser.version() };
   await writeFile(path.join(out, 'row-editor-validation.json'), JSON.stringify(report, null, 2));
+  await writeFile(path.join(out, 'native-input-steps.json'), JSON.stringify(rowInputTrace, null, 2));
   await context.tracing.stop({ path: path.join(out, 'trace.zip') }).catch(() => {});
   await browser.close(); if (server) await new Promise(r => server.close(r));
   console.log(`${report.passedCount}/${results.length} custom row editor checks passed`); if (!report.passed) process.exitCode = 1;
