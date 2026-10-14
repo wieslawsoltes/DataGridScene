@@ -21,7 +21,22 @@ public sealed record FilterGroup(bool All, IReadOnlyList<GridFilter> Children) :
     {
         if (Children.Count > 1024) throw new ArgumentException("Too many filter terms.");
         var predicates = Children.Select(child => child.Compile(schema)).ToArray();
-        return record => All ? predicates.All(predicate => predicate(record)) : predicates.Any(predicate => predicate(record));
+        // Compile all children in order once, including branches that short-circuit
+        // for a particular record. Do not allocate a capturing All/Any delegate for
+        // every row; preserve left-to-right evaluation and exception behavior.
+        if (predicates.Length == 0) return All ? _ => true : _ => false;
+        if (predicates.Length == 1) return predicates[0];
+        return All ? MatchAll : MatchAny;
+        bool MatchAll(GridRecord record)
+        {
+            for (int i = 0; i < predicates.Length; i++) if (!predicates[i](record)) return false;
+            return true;
+        }
+        bool MatchAny(GridRecord record)
+        {
+            for (int i = 0; i < predicates.Length; i++) if (predicates[i](record)) return true;
+            return false;
+        }
     }
 }
 public sealed record NotFilter(GridFilter Child) : GridFilter
