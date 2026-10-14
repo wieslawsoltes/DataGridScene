@@ -28,6 +28,8 @@ public sealed partial class GridControl
         FilterPanel.EnableRequested += (_, enabled) => Safe(() => IsFilterEnabled = enabled);
         FilterPanel.RemoveRequested += (_, key) => Safe(() => RemoveFilterToken(key));
         FilterPanel.ClearRequested += (_, _) => Safe(ClearFilterConditions);
+        FilterPanel.HistoryRequested += (_, id) => Safe(() => ApplyRecentFilter(id));
+        FilterPanel.HistoryClearRequested += (_, _) => ClearFilterHistory();
         FilterPanel.EditRequested += (_, _) => FilterEditorRequested?.Invoke(this, EventArgs.Empty);
         FilterPanel.TokenEditRequested += (_, key) =>
         {
@@ -57,8 +59,8 @@ public sealed partial class GridControl
     // Called after filter mutations (not during paint, hover, selection or value-only updates).
     private void RefreshFilterPanel()
     {
-        if (_dataUpdateDepth > 0) return;
-        if (Table is null || View is null) { FilterPanel.SetState([], true); return; }
+        if (_dataUpdateDepth > 0) { _filterPanelPending = true; return; }
+        if (Table is null || View is null) { FilterPanel.SetState([], true); FilterPanel.SetExpression(""); return; }
         var tokens = new List<FilterPanelToken>();
         if (_criteria is not null) tokens.Add(new("criteria", "Criteria", GridFilterText.Describe(_criteria, Table.Schema)));
         foreach (var column in Table.Schema.Columns)
@@ -75,5 +77,6 @@ public sealed partial class GridControl
             }
         }
         FilterPanel.SetState(tokens, IsFilterEnabled);
+        FilterPanel.SetExpression(GridFilterText.Describe(View.RequestedQuery.Filter, Table.Schema, 16384));
     }
 }

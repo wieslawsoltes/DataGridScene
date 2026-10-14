@@ -19,7 +19,8 @@ async function settle() { await page.evaluate(() => new Promise(resolve => reque
 async function wait(predicate) {
   const start = Date.now();
   while (Date.now()-start < 15000) { const s = await snapshot(); if (predicate(s)) return s; await page.waitForTimeout(30); }
-  throw new Error('State timeout: ' + JSON.stringify((await snapshot()).performance));
+  const s = await snapshot();
+  throw new Error('State timeout: ' + JSON.stringify({ scenario: s.scenario, performance: s.performance, navigation: s.navigation, message: s.message, lastError: s.lastError }));
 }
 async function command(name, data={}) {
   const result = await page.evaluate(([n,d]) => dataGridScene.command(n,d), [name,data]);
@@ -46,7 +47,11 @@ async function editCell(field,text) {
 async function test(name,fn) {
   const start=Date.now();
   try { await fn(); results.push({name,passed:true,milliseconds:Date.now()-start}); console.log('PASS',name); }
-  catch(e) { results.push({name,passed:false,error:String(e.stack??e)}); console.error('FAIL',name,e); await page.screenshot({path:path.join(directory,name+'.png')}).catch(()=>{}); }
+  catch(e) {
+    results.push({name,passed:false,error:String(e.stack??e)}); console.error('FAIL',name,e);
+    await writeFile(path.join(directory,name+'.json'), JSON.stringify(await snapshot(),null,2)).catch(()=>{});
+    await page.screenshot({path:path.join(directory,name+'.png')}).catch(()=>{});
+  }
 }
 try {
   await page.goto(process.env.APP_URL??'http://127.0.0.1:4173/DataGridScene/',{waitUntil:'domcontentloaded',timeout:120000});
@@ -115,12 +120,35 @@ try {
     assert.equal((await snapshot()).performance.refreshCount,s.performance.refreshCount);
   });
   await test('perf.live-timer-start-stop-and-scenario-cleanup',async()=>{
-    await click('scenario-Live updates'); await click('live-toggle');
-    const running=await wait(s=>s.performance.liveTick>=2); assert.equal(running.performance.liveUpdatesRunning,true);
-    await click('live-toggle'); const stopped=await snapshot(); await page.waitForTimeout(600);
-    assert.equal((await snapshot()).performance.liveTick,stopped.performance.liveTick);
-    await click('live-toggle'); await wait(s=>s.performance.liveUpdatesRunning); await click('scenario-Overview');
-    assert.equal((await snapshot()).performance.liveUpdatesRunning,false);
+    const transitions=[];
+    for(let cycle=0;cycle<3;cycle++) {
+      await click('scenario-Live updates');
+      await wait(s=>s.scenario==='Live updates' && s.performance.liveTick===0 && !s.performance.liveUpdatesRunning);
+      await click('live-toggle');
+      const running=await wait(s=>s.performance.liveTick>=2);
+      assert.equal(running.performance.liveUpdatesRunning,true);
+      await click('live-toggle');
+      const stopped=await wait(s=>!s.performance.liveUpdatesRunning);
+      await page.waitForTimeout(600);
+      const idle=await snapshot();
+      assert.equal(idle.performance.liveUpdatesRunning,false);
+      assert.equal(idle.performance.liveTick,stopped.performance.liveTick);
+      await click('live-toggle');
+      await wait(s=>s.performance.liveUpdatesRunning && s.performance.liveTick>stopped.performance.liveTick);
+      await click('scenario-Overview');
+      // Pointer completion/two RAFs is not completion of the native scenario command.
+      // Observe that command's required result first, then keep the independent timer
+      // assertion. A missed click or an actual cleanup defect still fails; no retry.
+      const overview=await wait(s=>s.scenario==='Overview');
+      assert.equal(overview.performance.liveUpdatesRunning,false);
+      await page.waitForTimeout(600);
+      const settled=await snapshot();
+      assert.equal(settled.scenario,'Overview');
+      assert.equal(settled.performance.liveUpdatesRunning,false);
+      assert.equal(settled.performance.liveTick,overview.performance.liveTick);
+      transitions.push({cycle,running:running.performance,stopped:stopped.performance,overview:overview.performance});
+    }
+    measurements.push({name:'Three native start/stop/exit cycles',transitions});
   });
   await test('perf.dependency-edit-recalculates-total',async()=>{
     await click('scenario-Group summaries'); const before=await snapshot(); await editCell('Quantity','500');

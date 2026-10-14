@@ -5,7 +5,7 @@ using Windows.Foundation;
 
 namespace DataGridScene.Controls;
 
-public enum SceneGlyph { Table, Previous, Next, Add, Delete, Undo, Redo, Copy, Paste, Columns, Filter, Save, Restore, Export, Theme, Expand, Collapse, Search, Settings, Help, Group, Bands, Live, Edit, BestFit }
+public enum SceneGlyph { Table, Previous, Next, Add, Delete, Undo, Redo, Copy, Paste, Columns, Filter, Save, Restore, Export, Theme, Expand, Collapse, Search, Settings, Help, Group, Bands, Live, Edit, BestFit, DropDown }
 
 /// <summary>Independent stroke icons: no icon font, system glyph fallback or vendor bitmap assets.
 /// Fixed logical geometry remains stable while text fonts load. Native paints are released on unload.</summary>
@@ -39,6 +39,7 @@ public sealed class VectorIcon : SKCanvasElement
             }
             switch (Glyph)
             {
+                case SceneGlyph.DropDown: L(6, 9, 12, 15); L(12, 15, 18, 9); break;
                 case SceneGlyph.Previous: Arrow(true); break;
                 case SceneGlyph.Next: Arrow(false); break;
                 case SceneGlyph.Add: R(3, 3, 13, 17); L(17, 11, 17, 21); L(12, 16, 22, 16); break;

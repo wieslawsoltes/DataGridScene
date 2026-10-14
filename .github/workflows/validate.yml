@@ -122,9 +122,12 @@ jobs:
           path: artifacts/browser-validation/
           if-no-files-found: error
   browser:
-    if: always()
+    # Still run after failures to enforce the aggregate gate, but allow newer
+    # revisions to cancel this collector instead of retaining a queued finalizer.
+    if: ${{ !cancelled() }}
     needs: [browser-build, browser-tests]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Gather independent reports without overwriting suite directories
         uses: actions/download-artifact@v4

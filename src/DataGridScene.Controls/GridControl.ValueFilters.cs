@@ -11,6 +11,8 @@ public sealed partial class GridControl
     private Flyout? _valueFlyout;
     public ColumnFilterEditor? ActiveColumnFilter { get; private set; }
     public IReadOnlyDictionary<string, ColumnValueFilter> ValueFilters => new System.Collections.ObjectModel.ReadOnlyDictionary<string, ColumnValueFilter>(_valueFilters);
+    /// <summary>Number of published filter display snapshots, excluding deferred intermediate states.</summary>
+    public long FilterDisplayRefreshCount { get; private set; }
     /// <summary>Replace this column's auto-filter with a typed value selection, retaining base
     /// criteria, other columns, search and summary configuration. Null clears this column.</summary>
     public void SetColumnValues(string field, ColumnValueFilter? filter)
@@ -27,11 +29,14 @@ public sealed partial class GridControl
         _filterTexts.Clear(); foreach (var pair in texts) _filterTexts.Add(pair.Key, pair.Value);
         RefreshFilterDisplay(); ClearError(); Redraw(); Changed();
     }
-    private void RefreshFilterDisplay()
+    private void RefreshFilterDisplay(bool remember = true)
     {
+        if (_dataUpdateDepth > 0) { _filterDisplayPending = true; return; }
         var display = new Dictionary<string, string>(_filterTexts, StringComparer.OrdinalIgnoreCase);
         foreach (var (field, values) in _valueFilters) display[field] = values.Exclude ? $"Except {values.Values.Count:N0} values" : $"{values.Values.Count:N0} values selected";
-        Renderer.FilterTexts = display; RefreshFilterPanel();
+        Renderer.FilterTexts = display; FilterDisplayRefreshCount++;
+        if (remember) RememberFilterState();
+        RefreshFilterPanel();
     }
     private void CloseValueFilter() { _valueFlyout?.Hide(); _valueFlyout = null; ActiveColumnFilter = null; }
     private void ShowColumnFilter(string field, Point point)
