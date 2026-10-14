@@ -24,7 +24,7 @@ public sealed partial class MainPage
             chooser.MetadataRefreshCount, chooser.SearchPassCount, chooser.ListPublicationCount, chooser.CreatedRowCount, chooser.RowBindCount, chooser.RealizedRowCount,
             // Export anonymous scalar DTOs from the rooted sample, not trimmed Controls records.
             rows = chooser.RealizedRows(this).Select(row => new { row.Identity, row.Field, row.IsChecked, row.Theme, row.Bounds }).ToArray(),
-            actions = chooser.ActionBounds(this),
+            actions = DataGrid.ColumnChooserActionBounds(this),
             focusedText = focused?.Text, selectionStart = focused?.SelectionStart, selectionLength = focused?.SelectionLength
         };
     }
