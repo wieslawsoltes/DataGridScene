@@ -266,7 +266,7 @@ public sealed partial class MainPage : Page
     }
     private async void ShowColumns()
     {
-        try { var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Column chooser", Content = new ColumnChooser(DataGrid.ColumnLayout!, DataGrid.Table!.Schema), CloseButtonText = "Done" }; await dialog.ShowAsync(); }
+        try { await DataGrid.ShowColumnChooserAsync(); }
         catch (Exception error) { SetMessage(error.Message); }
     }
     private async void ShowFilters()
