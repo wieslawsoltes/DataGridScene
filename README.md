@@ -51,6 +51,12 @@ F2/Enter starts editing, Enter commits, and Escape cancels. Shift extends select
 
 Save/restore includes column order, widths, pinning, band paths, filters, search, groups, summaries, row heights, theme, scroll position, expansion, and optional compressed selection/focus/anchor state. See [workspace APIs](docs/workspace.md).
 
+## Column customization
+
+**Columns** opens a native virtualized chooser. Search by caption, field name or band; choose All, Visible or Hidden columns. Arrow keys select and Space toggles visibility. Freeze and exact-width editors remain attached to the selected field, not one editor per search result. Untouched fractional widths do not round or rebuild layout. Invalid or externally conflicted width text remains until corrected or cancelled, and hiding the last visible column is rejected without leaving its checkbox out of sync.
+
+Use `await grid.ShowColumnChooserAsync()` for an integrated dialog or host `new ColumnChooser(layout, schema)` independently. Table replacement and unloading dismiss the old dialog without posting unfinished width text. Search storage depends on column metadata, not record count, and native row creation follows the viewport. See [API, ownership, virtualization and validation boundaries](docs/column-chooser.md).
+
 ## Live updates and performance
 
 Select **Live updates** for a 100,000-row sample. Start/stop its synthetic feed, update 100 display values, or batch 1,000 independent quantity edits. The feed pauses during cell editing and stops when leaving the scenario. The sidebar reports actual shaping and value-only update counts.
@@ -58,6 +64,8 @@ Select **Live updates** for a 100,000-row sample. Start/stop its synthetic feed,
 Display-only edits reuse shaped rows and geometry when validated dependencies prove that sorting, filtering and summaries are unaffected. `GridView.DeferRefresh()` and `GridControl.BeginDataUpdate()` coalesce related operations. Uniform row geometry uses constant-size storage, custom heights use adaptive sparse/dense indexes, and selected-cell counts are cached. Relevant shaping changes still use the complete refresh path. See [performance APIs, measurements and limits](docs/performance.md).
 
 Viewport frames and summary geometry are cached across display-only updates. The page cache separately bounds completed pages, pending requests and active fetches, and rejects mixed revisions. The correctness review also fixes rapid-click editing, untouched null/timestamp commits and visual-filter semantics. See [review findings, paging APIs and measured workloads](docs/review.md).
+
+Grouped filters evaluate in left-to-right short-circuit loops without allocating a capturing delegate for each record. Textual AND/OR chains produce shallow read-only groups so ordinary long filters do not become deeply nested trees. Explicit parentheses, NOT, precedence and input limits remain in place. See [filter execution review and bounded-allocation contracts](docs/column-chooser.md#filter-engine-review).
 
 ## Checked value filters
 
@@ -95,9 +103,9 @@ Native scrolling retains collapsed pooled controls under the same visual parent,
 
 ## Validation and deployment
 
-Shared C# validation contains **411 contracts**, run on .NET and inside the actual published WebAssembly application. The browser inventory is **301 interaction checks across 18 harnesses**, including every example in native mode, painted scrollbar visibility, native input/Tab order, transactional/responsive/custom forms, selection, workspaces, summaries, live updates, HiDPI and touch. Eight harnesses execute nine suites containing **94 individual Uno API contracts**. The same **14-step deployment smoke verifier** is the nineteenth test command and is reported separately. Tests retain JSON reports, screenshots and Playwright traces. Consult the exact commit's Actions result: inventory counts alone are not proof of success.
+Shared C# validation contains **423 contracts**, run on .NET and inside the actual published WebAssembly application. The browser inventory is **321 interaction checks across 19 harnesses**, including every example in native mode, painted scrollbar visibility, native input/Tab order, transactional/responsive/custom forms, column customization, selection, workspaces, summaries, live updates, HiDPI and touch. Nine harnesses execute ten suites containing **110 individual Uno API contracts**. The same **14-step deployment smoke verifier** is the twentieth test command and is reported separately. Tests retain JSON reports, screenshots and Playwright traces. Consult the exact commit's Actions result: inventory counts alone are not proof of success.
 
-CI builds the desktop target and all six packages. Only successful **main** validation triggers Pages deployment, using that exact run's artifact. Public verification checks `build.json`, actual editing/undo, bands, summaries, live updates, checked filters and theme transitions after their native controls finish layout. Custom editors, form layout, row editing, native modes/selectors/controls/input/Tab order, painted-scrollbar and recent-filter/panel-policy suites also run on the public URL. A loopback CI-artifact smoke result does not establish public deployment success.
+CI builds the desktop target and all six packages. Only successful **main** validation triggers Pages deployment, using that exact run's artifact. Public verification checks `build.json`, actual editing/undo, bands, summaries, live updates, checked filters and theme transitions after their native controls finish layout. Custom editors, form layout, row editing, native modes/selectors/controls/input/Tab order, painted-scrollbar, recent-filter/panel-policy and column-chooser suites also run on the public URL. A loopback CI-artifact smoke result does not establish public deployment success.
 
 The renderer draws into Uno's Skia canvas. Hardware acceleration depends on host/driver. Hosted browser tests use ANGLE/SwiftShader: their timings are **software-backend correctness evidence, not hardware GPU benchmarks**. The sample shows CPU paint time, not end-to-end frame or input latency.
 

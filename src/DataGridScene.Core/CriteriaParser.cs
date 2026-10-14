@@ -52,15 +52,21 @@ public static class CriteriaParser
         }
         private GridFilter Or()
         {
-            var left = And();
-            while (Accept("or")) left = GridFilter.Or(left, And());
-            return left;
+            var first = And();
+            if (!Accept("or")) return first;
+            var terms = new List<GridFilter> { first, And() };
+            while (Accept("or")) terms.Add(And());
+            // A flat chain is one group, not a left-deep tree that trips snapshot
+            // depth limits. Explicit parentheses, NOT and mixed precedence remain.
+            return new FilterGroup(false, terms.AsReadOnly());
         }
         private GridFilter And()
         {
-            var left = Unary();
-            while (Accept("and")) left = GridFilter.And(left, Unary());
-            return left;
+            var first = Unary();
+            if (!Accept("and")) return first;
+            var terms = new List<GridFilter> { first, Unary() };
+            while (Accept("and")) terms.Add(Unary());
+            return new FilterGroup(true, terms.AsReadOnly());
         }
         private GridFilter Unary()
         {

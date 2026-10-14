@@ -107,6 +107,12 @@ jobs:
           GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
           BROWSER_RESULTS: artifacts/deployed-verification
         run: node tests/browser/filter-history.mjs
+      - name: Verify virtualized column customization and filter execution on public Pages
+        env:
+          APP_URL: ${{ steps.deployment.outputs.page_url }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          BROWSER_RESULTS: artifacts/deployed-verification
+        run: node tests/browser/column-chooser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
