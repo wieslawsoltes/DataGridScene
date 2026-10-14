@@ -102,7 +102,9 @@ public sealed partial class ColumnChooser : UserControl, IDisposable
         _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); RefreshMatches(); };
         _scope.SelectionChanged += (_, _) => { if (!_sync && !_disposed) RefreshMatches(); };
         _list.SelectionChanged += (_, _) => { if (!_sync && !_disposed && _list.SelectedItem is ColumnChooserEntry entry && !SelectColumn(entry.Field)) SyncSelection(); };
-        _list.KeyDown += (_, args) =>
+        // ListViewItem consumes Space in its bubbling key handler. Handle the
+        // tunneling event first, but leave an actual checkbox's native activation alone.
+        _list.PreviewKeyDown += (_, args) =>
         {
             if (_disposed || args.Key != VirtualKey.Space || _list.SelectedItem is not ColumnChooserEntry entry) return;
             for (var source = args.OriginalSource as DependencyObject; source is not null && !ReferenceEquals(source, _list); source = VisualTreeHelper.GetParent(source))
@@ -110,9 +112,12 @@ public sealed partial class ColumnChooser : UserControl, IDisposable
             SetColumnVisible(entry.Field, !entry.Visible); args.Handled = true;
         };
         _pin.SelectionChanged += (_, _) => { if (!_sync && !_disposed && _selected is not null && _pin.SelectedItem is ColumnPin pin) { SetColumnPin(_selected.Field, pin); SyncSelection(); } };
-        _width.TextChanged += (_, _) => { if (!_sync && !_disposed) _widthDirty = true; };
+        // TextChanged is queued on the WASM native host. A property callback tracks
+        // the actual change synchronously: an immediate API commit sees pending text,
+        // and delayed notifications for our own display writes cannot mark it dirty.
+        _width.RegisterPropertyChangedCallback(TextBox.TextProperty, (_, _) => { if (!_sync && !_disposed) _widthDirty = true; });
         _width.LostFocus += (_, _) => { if (!_disposed) CommitWidth(); };
-        _width.KeyDown += (_, args) =>
+        _width.PreviewKeyDown += (_, args) =>
         {
             if (args.Key == VirtualKey.Enter) { CommitWidth(); args.Handled = true; }
             else if (args.Key == VirtualKey.Escape) { CancelWidth(); args.Handled = true; }
@@ -162,10 +167,29 @@ public sealed partial class ColumnChooser : UserControl, IDisposable
             (entry.Caption.Contains(search, StringComparison.OrdinalIgnoreCase) || entry.Field.Contains(search, StringComparison.OrdinalIgnoreCase) || entry.Band.Contains(search, StringComparison.OrdinalIgnoreCase))).ToArray();
         if (!_results.SequenceEqual(next))
         {
+            // Reset the old viewport before replacing its source. Otherwise Uno can
+            // retain a stale offset when a scrolled 10,000-column list becomes one
+            // search result, realizing that result entirely above the visible clip.
+            ResetResultsViewport();
             _results = Array.AsReadOnly(next); bool old = _sync; _sync = true;
             try { _list.ItemsSource = _results; ListPublicationCount++; } finally { _sync = old; }
         }
         UpdateCount(); SyncSelection();
+    }
+    private void ResetResultsViewport()
+    {
+        ScrollViewer? Find(DependencyObject parent)
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is ScrollViewer scroll) return scroll;
+                if (Find(child) is { } nested) return nested;
+            }
+            return null;
+        }
+        if (_list.IsLoaded && Find(_list) is { VerticalOffset: > 0 } scroll)
+            scroll.ChangeView(null, 0d, null, disableAnimation: true);
     }
     private void UpdateCount() => _count.Text = $"{_results.Count:N0} of {_ordered.Count:N0} columns · {_ordered.Count(entry => entry.Visible):N0} visible";
     public bool SelectColumn(string field)
@@ -239,7 +263,8 @@ public sealed partial class ColumnChooser : UserControl, IDisposable
     }
 }
 
-/// <summary>Stable column metadata identity. Layout values are refreshed in place by the chooser;</n/// consumers cannot write them or replace the owned result lists.</summary>
+/// <summary>Stable column metadata identity. Layout values are refreshed in place by the chooser;
+/// consumers cannot write them or replace the owned result lists.</summary>
 public sealed class ColumnChooserEntry
 {
     public string Field { get; }

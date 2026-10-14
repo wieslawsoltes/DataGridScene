@@ -16,10 +16,20 @@ const page = await context.newPage(), results = [], errors = [];
 page.on('pageerror', error => errors.push(String(error)));
 const grid = () => page.evaluate(() => dataGridScene.snapshot());
 const snapshot = () => page.evaluate(() => JSON.parse(chooserBridge.ColumnChooserSnapshot()));
+function timeoutSummary(state) {
+  // Full failure snapshots are retained below. Do not put 10,000 columns into
+  // every exception/log entry; keep the runtime failure readable and bounded.
+  const keys = ['open', 'selectedField', 'searchText', 'scope', 'widthText', 'hasPendingWidth', 'validationMessage',
+    'totalCount', 'resultCount', 'createdRowCount', 'realizedRowCount', 'focusedAction', 'focusedText',
+    'selectionStart', 'selectionLength', 'scenario', 'recordCount', 'lastError', 'message', 'isEditing'];
+  return { ...Object.fromEntries(keys.map(key => [key, state[key]])), rows: state.rows?.slice(0, 3),
+    matchingFields: state.matchingFields?.slice(0, 8), scopePopup: state.scopePopup, pinPopup: state.pinPopup,
+    actions: state.actions && Object.fromEntries(Object.entries(state.actions).filter(([key]) => !key.startsWith('row-') && !key.startsWith('check-'))) };
+}
 async function wait(read, predicate, timeout = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeout) { const state = await read(); if (predicate(state)) return state; await page.waitForTimeout(30); }
-  throw new Error('Chooser state timed out: ' + JSON.stringify(await read()));
+  throw new Error('Chooser state timed out: ' + JSON.stringify(timeoutSummary(await read())));
 }
 const waitChooser = predicate => wait(snapshot, predicate);
 const waitGrid = predicate => wait(grid, predicate);
@@ -77,6 +87,12 @@ async function chooseEnum(name, index) {
 async function scope(value) {
   await chooseEnum('scope', ['All', 'Visible', 'Hidden'].indexOf(value)); return waitChooser(state => state.scope === value);
 }
+function withoutTransparentAnd(filter) {
+  // GridFilterState.FiltersEqual explicitly treats only one-child AND wrappers
+  // as transparent. Keep every actual OR/NOT/field/operator/typed value intact.
+  while (filter?.$kind === 'group' && filter.all === true && filter.children.length === 1) filter = filter.children[0];
+  return filter;
+}
 async function test(name, action) {
   const start = Date.now();
   try { await action(); results.push({ name, passed: true, milliseconds: Date.now() - start }); console.log('PASS', name); }
@@ -94,17 +110,18 @@ try {
   await test('chooser.shared-filter-execution-contracts-in-wasm', async () => {
     const report = await page.evaluate(() => JSON.parse(chooserBridge.ValidateFilterExecution()));
     await writeFile(path.join(directory, 'filter-execution-contracts.json'), JSON.stringify(report, null, 2));
-    assert.equal(report.results.length, 12); assert.equal(report.passed, true, JSON.stringify(report));
+    assert.equal(report.results.length, 12); assert.equal(report.passed, true, JSON.stringify(report.results.filter(result => !result.passed)));
   });
   await test('chooser.real-uno-api-contracts', async () => {
     const report = await page.evaluate(() => JSON.parse(chooserBridge.ValidateColumnChooser()));
     await writeFile(path.join(directory, 'chooser-api-contracts.json'), JSON.stringify(report, null, 2));
-    assert.equal(report.results.length, 16); assert.equal(report.passed, true, JSON.stringify(report));
+    assert.equal(report.results.length, 16); assert.equal(report.passed, true, JSON.stringify(report.results.filter(result => !result.passed)));
   });
   await test('chooser.native-open-close-does-not-change-grid-data', async () => {
     await reset(); const before = await grid(); const chooser = await open();
-    assert.equal(chooser.totalCount, before.columns.length); assert.equal(chooser.scope, 'All');
-    await page.screenshot({ path: path.join(directory, 'column-chooser-light.png') }); await close();
+    assert.equal(chooser.totalCount, before.columns.length); assert.equal(chooser.scope, 'All'); assert.equal(chooser.hasPendingWidth, false);
+    await page.screenshot({ path: path.join(directory, 'column-chooser-light.png') });
+    assert.equal((await snapshot()).hasPendingWidth, false); await close();
     const after = await grid(); assert.deepEqual(after.columns, before.columns); assert.deepEqual(after.query, before.query);
     assert.equal(after.performance.refreshCount, before.performance.refreshCount); assert.deepEqual(after.records, before.records);
   });
@@ -136,7 +153,7 @@ try {
     await fixture(4); const before = await grid(); const old = await snapshot();
     await click('width'); await click('caption'); const state = await snapshot();
     assert.equal(Number(state.widthText), 123.456789012345); assert.equal(state.metadataRefreshCount, old.metadataRefreshCount);
-    assert.deepEqual((await grid()).columns, before.columns); await close();
+    assert.equal(state.hasPendingWidth, false); assert.deepEqual((await grid()).columns, before.columns); await close();
   });
   await test('chooser.exact-width-enter-commits-one-layout-change', async () => {
     await fixture(4); const before = await snapshot(); const data = await grid();
@@ -156,7 +173,8 @@ try {
     await page.evaluate(() => chooserBridge.SetExternalColumnWidth('C00000', 199.25));
     await click('apply-width'); const state = await waitChooser(state => state.validationMessage.includes('changed elsewhere'));
     assert.equal(state.widthText, '222.75'); assert.equal(state.entries[0].width, 199.25);
-    await click('cancel-width'); await waitChooser(state => state.widthText === '199.25' && !state.hasPendingWidth);
+    await click('width'); await waitChooser(state => state.focusedAction === 'width'); await page.keyboard.press('Escape');
+    await waitChooser(state => state.open && state.widthText === '199.25' && !state.hasPendingWidth && state.validationMessage === '');
   });
   await test('chooser.native-visible-hidden-scope-and-live-refresh', async () => {
     await fixture(4); await click('check-C00001'); await waitGrid(state => !state.columns[1].visible);
@@ -209,7 +227,10 @@ try {
     await clickChromeAction(page, 'filter-panel-clear'); await waitGrid(state => !state.filterPanel.visible);
     await clickChromeAction(page, 'recent-filters'); await waitGrid(state => state.buttons['filter-history-item-' + id]?.height > 0);
     await clickChromeAction(page, 'filter-history-item-' + id); const after = await waitGrid(state => !state.filterPanel.isHistoryOpen && state.filterPanel.visible);
-    assert.equal(after.filteredCount, before.filteredCount); assert.deepEqual(after.query.filter, before.query.filter);
+    assert.equal(after.filteredCount, before.filteredCount); assert.equal(after.filterPanel.history[0].id, id);
+    assert.deepEqual(withoutTransparentAnd(after.query.filter), withoutTransparentAnd(before.query.filter));
+    assert.deepEqual({ ...after.query, filter: null }, { ...before.query, filter: null });
+    assert.deepEqual(after.records, before.records);
   });
   await test('chooser.repeated-open-close-does-not-mutate-layout-or-retain-rows', async () => {
     await reset(); const before = await grid();
