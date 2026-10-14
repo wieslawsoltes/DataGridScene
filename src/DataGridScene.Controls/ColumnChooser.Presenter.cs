@@ -27,16 +27,18 @@ public sealed partial class ColumnChooser
             ColumnDefinitions.Add(new() { Width = new GridLength(32) }); ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
             Children.Add(Check); var labels = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             labels.Children.Add(_caption); labels.Children.Add(_field); Grid.SetColumn(labels, 1); Children.Add(labels);
-            Check.Click += (_, _) => { if (Entry is { } entry) owner.SetColumnVisible(entry.Field, Check.IsChecked == true); Sync(); };
+            Check.Click += (_, _) => { if (!owner._disposed && Entry is { } entry) owner.SetColumnVisible(entry.Field, Check.IsChecked == true); Sync(); };
             DataContextChanged += (_, _) => Bind();
-            Loaded += (_, _) => { owner._realized.Add(this); Bind(); };
+            Loaded += (_, _) => { if (!owner._disposed) owner._realized.Add(this); Bind(); };
             Unloaded += (_, _) => { owner._realized.Remove(this); Detach(); };
         }
         private void Bind()
         {
-            var entry = DataContext as ColumnChooserEntry;
-            if (!ReferenceEquals(Entry, entry)) { Entry = entry; _owner.RowBindCount++; }
             Detach();
+            // Queued realization/loading may arrive during a native dialog close.
+            // A disposed owner must not acquire a new external model subscription.
+            var entry = _owner._disposed ? null : DataContext as ColumnChooserEntry;
+            if (!ReferenceEquals(Entry, entry)) { Entry = entry; _owner.RowBindCount++; }
             if (IsLoaded && entry is not null) { _subscribed = entry; entry.Changed += EntryChanged; }
             Sync();
         }
@@ -45,7 +47,7 @@ public sealed partial class ColumnChooser
         private void Sync()
         {
             Check.IsChecked = Entry?.Visible == true;
-            Check.IsEnabled = Entry is not null;
+            Check.IsEnabled = !_owner._disposed && Entry is not null;
             _caption.Text = Entry?.Caption ?? "";
             _field.Text = Entry is null ? "" : $"{Entry.Field} · {Entry.Band}";
             if (Entry is not null) { AutomationProperties.SetName(Check, "Show " + Entry.Caption); AutomationProperties.SetName(this, Entry.Caption); }

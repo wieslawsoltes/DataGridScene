@@ -38,15 +38,18 @@ async function click(name) {
   await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
 }
 async function replace(name, value) {
-  await click(name); await page.waitForFunction(() => document.activeElement?.id === 'uno-input');
-  const before = await waitChooser(state => state.focusedText !== null);
+  await click(name);
+  // Observe the particular native TextBox, not whichever previous input still
+  // owns the browser host while Uno processes a queued pointer/focus change.
+  const before = await waitChooser(state => state.focusedAction === name && state.focusedText !== null);
+  await page.waitForFunction(value => document.activeElement?.id === 'uno-input' && document.activeElement.value === value, before.focusedText);
   await page.keyboard.press('Control+A');
   await page.waitForFunction(() => { const input = document.activeElement; return input?.id === 'uno-input' && input.selectionStart === 0 && input.selectionEnd === input.value.length; });
-  await waitChooser(state => state.selectionStart === 0 && state.selectionLength === before.focusedText.length);
+  await waitChooser(state => state.focusedAction === name && state.selectionStart === 0 && state.selectionLength === before.focusedText.length);
   await page.keyboard.press('Backspace');
-  await waitChooser(state => state.focusedText === '');
+  await waitChooser(state => state.focusedAction === name && state.focusedText === '');
   if (value) await page.keyboard.insertText(value);
-  await waitChooser(state => state.focusedText === value);
+  await waitChooser(state => state.focusedAction === name && state.focusedText === value);
 }
 async function open() {
   await clickChromeAction(page, 'columns');
@@ -64,10 +67,15 @@ async function fixture(columns) {
   await reset(); await page.evaluate(columns => chooserBridge.ConfigureColumnChooserFixture(columns), columns);
   await waitGrid(state => state.columns.length === columns); await open();
 }
+async function chooseEnum(name, index) {
+  const key = name + 'Popup'; await click(name);
+  await waitChooser(state => state[key].isOpen && state[key].items.length === 3 && (state[key].focusWithin || state[key].focusedIndex >= 0));
+  await page.keyboard.press('Home'); await waitChooser(state => state[key].focusedIndex === 0);
+  for (let i = 1; i <= index; i++) { await page.keyboard.press('ArrowDown'); await waitChooser(state => state[key].focusedIndex === i); }
+  await page.keyboard.press('Enter'); await waitChooser(state => !state[key].isOpen && state[key].selectedIndex === index);
+}
 async function scope(value) {
-  await click('scope'); await page.keyboard.press('Home');
-  for (let i = 0; i < ['All', 'Visible', 'Hidden'].indexOf(value); i++) await page.keyboard.press('ArrowDown');
-  await page.keyboard.press('Enter'); return waitChooser(state => state.scope === value);
+  await chooseEnum('scope', ['All', 'Visible', 'Hidden'].indexOf(value)); return waitChooser(state => state.scope === value);
 }
 async function test(name, action) {
   const start = Date.now();
@@ -158,7 +166,7 @@ try {
   });
   await test('chooser.native-pin-preserves-grid-data-and-width', async () => {
     await fixture(4); await click('row-C00001'); await waitChooser(state => state.selectedField === 'C00001');
-    const before = await grid(); await click('pin'); await page.keyboard.press('End'); await page.keyboard.press('Enter');
+    const before = await grid(); await chooseEnum('pin', 2);
     await waitChooser(state => state.entries[0].pin === 'Right'); const after = await grid();
     assert.equal(after.columns[1].pin, 2); assert.equal(after.columns[1].width, before.columns[1].width);
     assert.deepEqual(after.records, before.records); assert.equal(after.performance.refreshCount, before.performance.refreshCount);

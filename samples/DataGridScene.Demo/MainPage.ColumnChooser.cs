@@ -1,8 +1,11 @@
 using DataGridScene.Controls;
 using DataGridScene.Core;
+using DataGridScene.Rendering.Skia;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 
 namespace DataGridScene.Demo;
 
@@ -13,7 +16,28 @@ public sealed partial class MainPage
     public object ColumnChooserSnapshot()
     {
         if (DataGrid.ActiveColumnChooser is not { } chooser) return new { open = false };
-        var focused = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as TextBox;
+        var focusedElement = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        var focused = focusedElement as TextBox;
+        bool Within(DependencyObject parent)
+        {
+            for (var current = focusedElement; current is not null; current = VisualTreeHelper.GetParent(current))
+                if (ReferenceEquals(current, parent)) return true;
+            return false;
+        }
+        object Combo(ComboBox combo)
+        {
+            var items = new List<object>(); int focusedIndex = -1;
+            // Only three enum choices; ContainerFromIndex reads existing realization,
+            // never ScrollIntoView/UpdateLayout or a walk over all schema columns.
+            for (int index = 0; index < combo.Items.Count; index++)
+                if (combo.ContainerFromIndex(index) is ComboBoxItem { IsLoaded: true } item && item.ActualWidth > 0 && item.ActualHeight > 0)
+                {
+                    if (Within(item)) focusedIndex = index;
+                    var point = item.TransformToVisual(this).TransformPoint(new Point());
+                    items.Add(new { index, text = item.Content?.ToString(), bounds = new RectD(point.X, point.Y, item.ActualWidth, item.ActualHeight) });
+                }
+            return new { isOpen = combo.IsDropDownOpen, combo.SelectedIndex, focusedIndex, focusWithin = Within(combo), items };
+        }
         return new
         {
             open = true, chooser.SelectedField, chooser.SearchText, scope = chooser.FilterScope.ToString(), chooser.WidthText,
@@ -25,7 +49,9 @@ public sealed partial class MainPage
             // Export anonymous scalar DTOs from the rooted sample, not trimmed Controls records.
             rows = chooser.RealizedRows(this).Select(row => new { row.Identity, row.Field, row.IsChecked, row.Theme, row.Bounds }).ToArray(),
             actions = DataGrid.ColumnChooserActionBounds(this),
-            focusedText = focused?.Text, selectionStart = focused?.SelectionStart, selectionLength = focused?.SelectionLength
+            focusedAction = chooser.Actions.FirstOrDefault(pair => ReferenceEquals(focused, pair.Value)).Key,
+            focusedText = focused?.Text, selectionStart = focused?.SelectionStart, selectionLength = focused?.SelectionLength,
+            scopePopup = Combo((ComboBox)chooser.Actions["scope"]), pinPopup = Combo((ComboBox)chooser.Actions["pin"])
         };
     }
     // Explicit diagnostic fixture. Uses ordinary public grid APIs; not an interaction substitute.
