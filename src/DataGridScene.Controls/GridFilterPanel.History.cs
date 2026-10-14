@@ -99,6 +99,7 @@ public sealed partial class GridFilterPanel
             clear.Click += (_, _) => HistoryClearRequested?.Invoke(this, EventArgs.Empty);
             popup.Items.Add(clear); _actions["filter-history-clear"] = clear;
         }
+        AddDisplayModeOptions(popup);
         _historyPopup = popup; HistoryBuildCount++;
         popup.Closed += (_, _) => { if (ReferenceEquals(_historyPopup, popup)) { _historyPopup = null; RemoveHistoryActions(); } };
         try { popup.ShowAt(anchor); }

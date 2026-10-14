@@ -71,7 +71,7 @@ internal sealed class OfflineUiApp : Application {
    try {
     var reports = new[] { ChromeControlChecks.Run(), ControlReviewChecks.Run(), NativeControlChecks.Run(),
      NativeModeControlChecks.Run(), RowEditControlChecks.Run(), RowEditLayoutControlChecks.Run(),
-     RowEditorControlChecks.Run(), FilterHistoryControlChecks.Run() };
+     RowEditorControlChecks.Run(), FilterHistoryControlChecks.Run(), FilterPanelModeControlChecks.Run() };
     var report = new DataGridScene.Validation.ValidationReport(reports.SelectMany(item => item.Results).ToArray(), reports.Sum(item => item.Milliseconds));
     string json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
     System.IO.File.WriteAllText("artifacts/offline-ui-report.json", json);

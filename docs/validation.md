@@ -2,9 +2,9 @@
 
 ## Shared managed and geometry contracts
 
-`tests/DataGridScene.Tests` runs the 351-contract `NativeCellValidationSuite`, eight native Tab-order contracts, sixteen row-buffer contracts, ten row-form layout contracts ten atomic row-batch staging contracts and sixteen exact filter-history contracts. The combined **411-contract** report is written to `artifacts/core-validation.json`; any failed assertion causes a nonzero exit.
+`tests/DataGridScene.Tests` runs the 351-contract `NativeCellValidationSuite`, eight native Tab-order contracts, sixteen row-buffer contracts, ten row-form layout contracts, ten atomic row-batch staging contracts and sixteen exact filter-history contracts. The combined **411-contract** report is written to `artifacts/core-validation.json`; any failed assertion causes a nonzero exit.
 
-The same contracts run inside the actual published Uno WebAssembly application, invoked by their corresponding browser harnesses. These exercise schema, shaping, selection, version-checked edits, clipboard/export, paging, row-height indexes, bands, workspace state, native buffers, viewport-local focus ranks, transactional row edits, responsive field packing and failure-safe atomic staging.
+The same contracts run inside the actual published Uno WebAssembly application, invoked by their corresponding browser harnesses. They exercise schema, shaping, selection, version-checked edits, clipboard/export, paging, row-height indexes, bands, workspace state, native buffers, viewport-local focus ranks, transactional row edits, responsive field packing, failure-safe atomic staging and owned typed filter snapshots.
 
 ## Real browser interactions
 
@@ -28,10 +28,10 @@ The same contracts run inside the actual published Uno WebAssembly application, 
 | `performance.mjs` | 11 | Live updates, 100,000 records, values-only updates and batched edits. |
 | `review.mjs` | 8 | Ten Uno API contracts; cached frames, exact/null values and read-only transitions. |
 | `value-filters.mjs` | 13 | Checked inclusion/exclusion, search, persistence and virtualized distinct-value filtering. |
-| `filter-history.mjs` | 16 | Sixteen shared snapshot and sixteen Uno API contracts; native menu/pointer/keyboard input, split typed restoration, failure handling, expansion/clipping, dark theme and 100,000-row no-op work. |
+| `filter-history.mjs` | 23 | Sixteen shared snapshot, sixteen history Uno API and eight panel-mode Uno API contracts; native menus/input, typed restoration, failure handling, expansion, themes, presentation policies and 100,000-row no-op work. |
 | `chrome.mjs` | 18 | Twelve Uno API contracts; ribbon, themes, full-width view and filter-panel interactions. |
 
-Inventory: **294 interaction checks**, **411 shared managed/geometry contracts**, and **86 individual Uno control API contracts**. Embedded contract invocations are included in the interaction count, not additional independent scenarios. The **14-step deployment smoke** is reported separately; `deployment-smoke.mjs` is separate from the eighteen interaction harnesses: nineteen total test commands. Counts alone do not establish that a particular run passed.
+Inventory: **301 interaction checks**, **411 shared managed/geometry contracts**, and **94 individual Uno control API contracts**. Embedded contract invocations are included in interaction counts, not additional independent scenarios. The API contracts are nine suites invoked by eight browser harnesses. The **14-step deployment smoke** is reported separately; `deployment-smoke.mjs` is separate from the eighteen interaction harnesses: nineteen total test commands. Counts alone do not establish that a particular run passed.
 
 The test server uses the same `/DataGridScene/` base path as Pages without cross-origin-isolation headers. Reports, screenshots, exports and Playwright traces are retained. Tests include rejected operations, identity and version invariants. They do not compare a licensed DevExpress build side by side.
 
@@ -48,11 +48,11 @@ Consult the exact head or merge commit's Actions run. Source archives and compil
 
 Only successful main validation triggers Publish Pages. It downloads the exact run's browser artifact rather than rebuilding another source revision. Verification compares the public `build.json` commit and exercises editing/undo, bands, group summaries, the summary editor, live updates, checked filters, the filter panel, whole-shell themes and native cell content.
 
-`tests/browser/deployment-smoke.mjs` executes the same `scripts/verify-deployment.mjs` before merge against the CI artifact on loopback. The explicit `VERIFY_LOCAL_ARTIFACT=1` path accepts only HTTP `127.0.0.1`; reports label this `local-artifact`. Public verification still requires HTTPS, the expected commit and its own successful run. Passing a local-artifact smoke is not evidence of a successful public publication.
+`tests/browser/deployment-smoke.mjs` executes the same `scripts/verify-deployment.mjs` before merge against the CI artifact on loopback. The explicit `VERIFY_LOCAL_ARTIFACT=1` path accepts only HTTP `127.0.0.1`; reports label it `local-artifact`. Public verification still requires HTTPS, the expected commit and its own successful run. Passing a local-artifact smoke is not evidence of successful public publication.
 
-The public URL additionally runs the complete custom row editor, row-form layout, row-editing, native Tab-order, template-selector, native-mode, native-cell, native-input, painted-scrollbar and recent-filter harnesses. Navigation commands are clicked only when their centers lie in the actual sidebar viewport. Reports/screenshots are retained as `deployed-site-verification`.
+The public URL additionally runs complete custom row editor, row-form layout, row-editing, native Tab-order, template-selector, native-mode, native-cell, native-input, painted-scrollbar and recent-filter/panel-policy harnesses. Navigation commands are clicked only when their centers lie in the actual sidebar viewport. Reports/screenshots are retained as `deployed-site-verification`.
 
-A failed verification does not undo publication. It marks the deployment unsuccessful and must be investigated before claiming the public app is verified.
+A failed verification does not undo publication. It marks deployment unsuccessful and must be investigated before claiming the public app is verified.
 
 ## Diagnostic integrity and readiness
 
@@ -60,11 +60,13 @@ Clipboard tests first write an unrelated sentinel. Ctrl+C must actually change t
 
 ComboBox tests wait for the real open popup, realized items and focused item between keys. Pointer completion does not imply Uno has processed queued focus/layout. Fresh scrollbar tests wait for nonzero native parts, then inspect screenshot pixels without hovering or forcing layout.
 
-The shared `clickChromeAction` observes the selected ribbon surface and actual positive on-screen button bounds before clicking. It prevents the deployment-only race where a Themes click had completed but the theme-choice controls still measured zero. No product action, focus or layout mutation is performed from a readiness read. Repeated real theme transitions remain covered and the public verifier's theme assertions are retained.
+The shared `clickChromeAction` observes the selected ribbon surface and actual positive on-screen button bounds before clicking. It prevents the deployment-only race where a Themes click had completed but theme-choice controls still measured zero. No product action, focus or layout mutation is performed from a readiness read. Real theme transitions remain covered and public theme assertions are retained.
 
 Focus/layout diagnostics read existing cells, fields, focus, instances and counters. They never assign TabIndex, move focus, force layout, invoke templates or materialize offscreen controls. Row form snapshots return the last applied plan rather than calculating it. Tests compare actual editor identities across resizes and keep invalid values until corrected or cancelled.
 
-Custom editor tests also inject failing captures and permission callbacks, reused roots and throwing cleanup. Model values, staged values, history and ownership must remain correct; a successful screenshot or absence of an exception alone does not satisfy the checks.
+History diagnostics project scalar values into the sample assembly instead of reflecting over trimmed Controls records. Menu tests observe actual focused/check/theme state. Invalid native text tests wait for both TextBox and browser-input select-all/clearing before continuing; they do not retry input. Presentation-mode assertions use real native menu interactions, not diagnostic setters.
+
+Custom editor tests inject failing captures and permission callbacks, reused roots and throwing cleanup. Model values, staged values, history and ownership must remain correct; a successful screenshot or absence of an exception alone does not satisfy the checks.
 
 ## Offline compilation and performance
 
@@ -72,8 +74,8 @@ Custom editor tests also inject failing captures and permission callbacks, reuse
 
 `dotnet run --project tests/DataGridScene.Tests -c Release -- --benchmark` reports warmed times/allocations; timing is not a machine-dependent pass threshold. Correctness gates check retained identities, refresh counts, storage bounds, agreement with complete refreshes and results after undo.
 
-Stress checks include 100,000 records, one million indexed row heights, 10,000 columns/bands and compressed selections. Native scrolling counts creations, reparenting, bindings, sizes, translations and focus-rank writes. Forms count packing, placement, editor creation, capture and permission writes separately from the underlying grid/window layout. These are bounded-work tests, not universal throughput guarantees.
+Stress checks include 100,000 records, one million indexed row heights, 10,000 columns/bands and compressed selections. Native scrolling counts creations, reparenting, bindings, sizes, translations and focus-rank writes. Forms count packing, placement, editor creation, capture and permission writes separately from underlying grid/window layout. Filter batches count final display publications; data-only/presentation-only batches must not restore cleared history. These are bounded-work tests, not universal throughput guarantees.
 
-See [performance](performance.md), [review findings](review.md), [native Tab order](native-tab-order.md), [row editing](row-editing.md), [row form layout](row-form-layout.md) and [custom row editors](row-editors.md). Hosted Chromium uses ANGLE/SwiftShader. Hardware GPU throughput, power, presentation latency, complete multilingual fallback, all DPI/driver cases and pixel-identical appearance remain unverified.
+See [performance](performance.md), [review findings](review.md), [native Tab order](native-tab-order.md), [row editing](row-editing.md), [row form layout](row-form-layout.md), [custom row editors](row-editors.md) and [panel policies](filter-panel-modes.md). Hosted Chromium uses ANGLE/SwiftShader. Hardware GPU throughput, power, presentation latency, complete multilingual fallback, all DPI/driver cases and pixel-identical appearance remain unverified.
 
-`scripts/validate-offline-ui.py /path/to/kit` additionally compiles the shared sample/diagnostic C# sources and executes all eight control API suites on a real Uno/X11 UI thread under `xvfb-run`. It first recompiles the current libraries and writes `artifacts/offline-ui-report.json`. This supplementary host is not the complete packaged desktop application, generated WASM interop, rendered pointer/keyboard coverage or a native OS runtime matrix; the browser/MSBuild/Pages gates remain required.
+`scripts/validate-offline-ui.py /path/to/kit` additionally compiles shared sample/diagnostic C# sources and executes all nine control API suites on a real Uno/X11 UI thread under `xvfb-run`. It first recompiles current libraries and writes `artifacts/offline-ui-report.json`. This supplementary host is not the complete packaged desktop application, generated WASM interop, rendered pointer/keyboard coverage or a native OS runtime matrix; browser/MSBuild/Pages gates remain required.

@@ -29,17 +29,7 @@ public static partial class BrowserBridge
             nativeStats = new { grid.RealizedCellControlCount, grid.PooledCellControlCount, grid.CreatedCellControlCount,
                 grid.ReusedCellControlCount, grid.CellControlBindCount, grid.CellControlPlacementCount, grid.HasPendingCellEdits, grid.CellControlAppearanceCount, grid.TemplateSelectorCallCount, grid.CachedTemplateChoiceCount },
             chrome = page.ChromeSnapshot(),
-            filterPanel = new {
-                visible = grid.FilterPanel.Visibility == Visibility.Visible,
-                items = grid.FilterPanel.Items.Select(item => new { item.Key, item.Caption, item.Description }).ToArray(),
-                grid.FilterPanel.IsFilterEnabled, grid.FilterPanel.ContentBuildCount, grid.FilterPanel.IsExpanded,
-                grid.FilterPanel.ExpandedExpression, grid.FilterPanel.IsHistoryOpen, grid.FilterPanel.HistoryBuildCount,
-                // Export scalar DTOs from the already rooted diagnostics assembly. The
-                // Controls assembly is trimmed: reflecting over its record constructor
-                // metadata fails in published WASM even when the collection is empty.
-                history = grid.FilterPanel.HistoryItems.Select(item => new { item.Id, item.Description, item.IsCurrent }).ToArray(),
-                grid.FilterHistoryRevision, grid.FilterHistoryUnavailableReason, grid.FilterDisplayRefreshCount
-            },
+            filterPanel = page.FilterPanelSnapshot(),
             ready = page.Ready, page.Scenario, page.RecordCount, filteredCount = view?.FilteredRecords.Count, viewRowCount = view?.Rows.Count,
             page.Message, grid.LastError, grid.IsEditing, grid.IsEditorReady, grid.EditorText, grid.EditingField, grid.EditingRecordId,
             selectionMode = grid.SelectionMode.ToString(), selectedCellCount = grid.Selection.SelectedCellCount,
@@ -95,6 +85,14 @@ public static partial class BrowserBridge
                 case "validate-chrome": return JsonSerializer.Serialize(new { ok = true, report = ChromeControlChecks.Run() }, Json);
                 case "history-capacity": grid.FilterHistoryCapacity = input.GetProperty("value").GetInt32(); break;
                 case "validate-filter-history": return JsonSerializer.Serialize(new { ok = true, report = FilterHistoryControlChecks.Run() }, Json);
+                case "validate-filter-panel-modes": return JsonSerializer.Serialize(new { ok = true, report = FilterPanelModeControlChecks.Run() }, Json);
+                case "filter-panel-mode": grid.FilterPanelMode = Text("value") switch
+                    {
+                        "automatic" => DataGridScene.Controls.FilterPanelDisplayMode.Automatic,
+                        "always" => DataGridScene.Controls.FilterPanelDisplayMode.Always,
+                        "hidden" => DataGridScene.Controls.FilterPanelDisplayMode.Hidden,
+                        _ => throw new ArgumentException("Unknown filter panel mode.")
+                    }; break;
                 case "validate-filter-history-core":
                     var checks = DataGridScene.Validation.FilterHistoryValidation.Run();
                     return JsonSerializer.Serialize(new { ok = true, report = new DataGridScene.Validation.ValidationReport(checks, checks.Sum(check => check.Milliseconds)) }, Json);
