@@ -2,7 +2,7 @@
 
 [Browser demo](https://wieslawsoltes.github.io/DataGridScene/) · [Build and validation](https://github.com/wieslawsoltes/DataGridScene/actions) · [Compatibility matrix](docs/compatibility.md)
 
-Independent .NET data-grid libraries, a reusable Uno Platform control, and a shared desktop/WebAssembly sample. The reference is the publicly documented DevExpress WPF GridControl. No DevExpress source, binaries, branding, or proprietary assets are included.
+Independent .NET data-grid libraries, a reusable [Uno Platform](https://platform.uno) control, and a shared desktop/WebAssembly sample. The reference is the publicly documented DevExpress WPF GridControl. No DevExpress source, binaries, branding, or proprietary assets are included.
 
 **This is a working preview, not a complete DevExpress replacement.** API compatibility, pixel-identical rendering, complete accessibility, and the remaining advanced features have not been established. The [compatibility matrix](docs/compatibility.md) distinguishes implemented behavior from incomplete scope.
 
